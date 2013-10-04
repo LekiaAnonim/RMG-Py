@@ -88,35 +88,15 @@ class Mopac(object):
                 "installed correctly.".format(self.executable_path)
             )
         # submits the input file to mopac
-
-        dir_path = tempfile.mkdtemp()
-        # copy input file to temp dir:
-        temp_input_file = os.path.join(dir_path, os.path.basename(self.input_file_path))
-        shutil.copy(self.input_file_path, dir_path)
-
-        process = Popen(
-            [self.executable_path, temp_input_file],
-            stdin=PIPE,
-            stdout=PIPE,
-            stderr=PIPE,
-        )
-        stdout, stderr = process.communicate(
-            input=None
-        )  # necessary to wait for executable termination!
-        if b"ended normally" not in stderr.strip():
-            logging.warning("Mopac error message:" + stderr.decode("utf-8"))
-
-        # copy output file from temp dir to output dir:
-        temp_output_file = os.path.join(
-            dir_path, os.path.basename(self.output_file_path)
-        )
-        shutil.copy(temp_output_file, self.output_file_path)
-
-        # delete temp folder:
-        shutil.rmtree(dir_path)
-        return self.verify_output_file()
-
-    def verify_output_file(self):
+        process = Popen([self.executablePath, self.inputFilePath])
+        process.communicate()# necessary to wait for executable termination!
+    
+        #Wait for OS to flush the buffer to disk. There should be a better way
+        import time
+        time.sleep(1)
+        return self.verifyOutputFile()
+        
+    def verifyOutputFile(self):
         """
         Check's that an output file exists and was successful.
 
