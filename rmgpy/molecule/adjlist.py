@@ -102,9 +102,10 @@ class ConsistencyChecker(object):
 
             if atom.charge != theoretical:
                 raise InvalidAdjacencyListError(
-                    ('Invalid valency for atom {symbol} with {radicals} unpaired electrons, '
+                    ('Invalid valency for atom {symbol} ({type}) with {radicals} unpaired electrons, '
                     '{lonePairs} pairs of electrons, {charge} charge, and bonds [{bonds}].'
                     ).format(symbol=atom.symbol,
+                             type=getAtomType(atom, atom.edges).label,
                              radicals=atom.radicalElectrons,
                              lonePairs=atom.lonePairs,
                              charge=atom.charge,
