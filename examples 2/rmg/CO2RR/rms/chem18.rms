@@ -1,0 +1,1550 @@
+Interfaces:
+- {}
+Phases:
+- Species:
+  - comment: 'Thermo library corrected for liquid phase: primaryThermoLibrary + Solvation
+      correction (H=-8kJ/mol;S=-47J/mol/K) with water as solvent and solute estimated
+      using Solute library: Ar'
+    name: Ar
+    radicalelectrons: 0
+    smiles: '[Ar]'
+    thermo:
+      polys:
+      - Tmax: 4530.901867600916
+        Tmin: 100.0
+        coefs:
+        - 2.5000000001661453
+        - -9.783188983347162e-13
+        - 1.2596819512415014e-15
+        - -5.277930593078881e-19
+        - 6.800532658433119e-23
+        - -1659.4486585720044
+        - -1.2364546492116852
+        type: NASApolynomial
+      - Tmax: 5000.0
+        Tmin: 4530.901867600916
+        coefs:
+        - 2.500592799020857
+        - -5.115902929824364e-07
+        - 1.6547828950269208e-10
+        - -2.377612448237651e-14
+        - 1.2803471670990132e-18
+        - -1659.997901260225
+        - -1.2402235418678855
+        type: NASApolynomial
+      type: NASA
+    type: Species
+  - comment: 'Thermo library corrected for liquid phase: primaryThermoLibrary + Solvation
+      correction (H=-1kJ/mol;S=-21J/mol/K) with water as solvent and solute estimated
+      using Solute library: He'
+    name: He
+    radicalelectrons: 0
+    smiles: '[He]'
+    thermo:
+      polys:
+      - Tmax: 4530.901867600916
+        Tmin: 100.0
+        coefs:
+        - 2.5000000001661453
+        - -9.783188983347162e-13
+        - 1.2596819512415014e-15
+        - -5.277930593078881e-19
+        - 6.800532658433119e-23
+        - -915.992314019999
+        - -1.645906435723649
+        type: NASApolynomial
+      - Tmax: 5000.0
+        Tmin: 4530.901867600916
+        coefs:
+        - 2.500592799020857
+        - -5.115902929824364e-07
+        - 1.6547828950269208e-10
+        - -2.377612448237651e-14
+        - 1.2803471670990132e-18
+        - -916.5415567082181
+        - -1.6496753283798529
+        type: NASApolynomial
+      type: NASA
+    type: Species
+  - comment: 'Thermo library corrected for liquid phase: primaryThermoLibrary + Solvation
+      correction (H=-2kJ/mol;S=-25J/mol/K) with water as solvent and solute estimated
+      using Solute library: Ne'
+    name: Ne
+    radicalelectrons: 0
+    smiles: '[Ne]'
+    thermo:
+      polys:
+      - Tmax: 4530.901867600916
+        Tmin: 100.0
+        coefs:
+        - 2.5000000001661453
+        - -9.783188983347162e-13
+        - 1.2596819512415014e-15
+        - -5.277930593078881e-19
+        - 6.800532658433119e-23
+        - -1033.1943588401632
+        - 0.3012137433466121
+        type: NASApolynomial
+      - Tmax: 5000.0
+        Tmin: 4530.901867600916
+        coefs:
+        - 2.500592799020857
+        - -5.115902929824364e-07
+        - 1.6547828950269208e-10
+        - -2.377612448237651e-14
+        - 1.2803471670990132e-18
+        - -1033.7436015283815
+        - 0.29744485069040844
+        type: NASApolynomial
+      type: NASA
+    type: Species
+  - comment: 'Thermo library corrected for liquid phase: primaryThermoLibrary + Solvation
+      correction (H=-6kJ/mol;S=-40J/mol/K) with water as solvent and solute estimated
+      using Solute library: N2'
+    name: N2
+    radicalelectrons: 0
+    smiles: N#N
+    thermo:
+      polys:
+      - Tmax: 1476.582538134354
+        Tmin: 100.0
+        coefs:
+        - 3.5413583141873635
+        - -0.0006933557379176147
+        - 2.10097359725117e-06
+        - -1.2896802236295132e-09
+        - 2.5858332781497933e-13
+        - -1750.501207182482
+        - -1.786252493694048
+        type: NASApolynomial
+      - Tmax: 5000.0
+        Tmin: 1476.582538134354
+        coefs:
+        - 2.8332207737191033
+        - 0.0016001016107903285
+        - -6.099482217403573e-07
+        - 1.0634234523012946e-10
+        - -6.908593001667823e-15
+        - -1582.2725896930915
+        - 1.7676022408418346
+        type: NASApolynomial
+      type: NASA
+    type: Species
+  - comment: 'Thermo library corrected for liquid phase: thermo_DFT_CCSDTF12_BAC +
+      Solvation correction (H=-16kJ/mol;S=-52J/mol/K) with water as solvent and solute
+      estimated using Solute library: carbon dioxide'
+    name: CO2
+    radicalelectrons: 0
+    smiles: O=C=O
+    thermo:
+      polys:
+      - Tmax: 978.2164247415373
+        Tmin: 100.0
+        coefs:
+        - 3.280844236561561
+        - 0.002501860004866126
+        - 8.08190843915926e-06
+        - -1.2051019574327036e-08
+        - 4.665419284125267e-12
+        - -50367.80291917101
+        - -0.19480334194943308
+        type: NASApolynomial
+      - Tmax: 5000.0
+        Tmin: 978.2164247415373
+        coefs:
+        - 4.6742752757606745
+        - 0.0026096268846741164
+        - -9.856820820173133e-07
+        - 1.957120153217903e-10
+        - -1.4983471395230124e-14
+        - -50918.189916982796
+        - -8.306399100072277
+        type: NASApolynomial
+      type: NASA
+    type: Species
+  - comment: '1/2 free energy of H2(g)Thermo library corrected for liquid phase: electrocatThermo
+      + Solvation correction (H=-12kJ/mol;S=-63J/mol/K) with water as solvent and
+      solute estimated using '
+    name: proton
+    radicalelectrons: 0
+    smiles: H+
+    thermo:
+      polys:
+      - Tmax: 4530.901867600916
+        Tmin: 100.0
+        coefs:
+        - 2.5000000001661453
+        - -9.783188983347162e-13
+        - 1.2596819512415014e-15
+        - -5.277930593078881e-19
+        - 6.800532658433119e-23
+        - -2144.826711802564
+        - -13.98756447711683
+        type: NASApolynomial
+      - Tmax: 5000.0
+        Tmin: 4530.901867600916
+        coefs:
+        - 2.500592799020857
+        - -5.115902929824364e-07
+        - 1.6547828950269208e-10
+        - -2.377612448237651e-14
+        - 1.2803471670990132e-18
+        - -2145.3759544907825
+        - -13.991333369773033
+        type: NASApolynomial
+      type: NASA
+    type: Species
+  - comment: 'Thermo library corrected for liquid phase: primaryThermoLibrary + Solvation
+      correction (H=-9kJ/mol;S=-40J/mol/K) with water as solvent and solute estimated
+      using Solute library: [H]'
+    name: H
+    radicalelectrons: 1
+    smiles: '[H]'
+    thermo:
+      polys:
+      - Tmax: 4530.901867600916
+        Tmin: 100.0
+        coefs:
+        - 2.5000000001661453
+        - -9.783188983347162e-13
+        - 1.2596819512415014e-15
+        - -5.277930593078881e-19
+        - 6.800532658433119e-23
+        - 24406.255843650768
+        - -5.23047756526747
+        type: NASApolynomial
+      - Tmax: 5000.0
+        Tmin: 4530.901867600916
+        coefs:
+        - 2.500592799020857
+        - -5.115902929824364e-07
+        - 1.6547828950269208e-10
+        - -2.377612448237651e-14
+        - 1.2803471670990132e-18
+        - 24405.706600962545
+        - -5.234246457923674
+        type: NASApolynomial
+      type: NASA
+    type: Species
+  name: gas
+- Species:
+  - adjlist: '1 X u0 p0 c0
+
+      '
+    comment: 'Thermo library corrected for liquid phase: surfaceThermoPt111 Binding
+      energy corrected by LSR () from Pt111 (H=+0kJ/mol) + Solvation correction (H=-12kJ/mol;S=-63J/mol/K)
+      with water as solvent and solute estimated using '
+    name: vacantX
+    radicalelectrons: 0
+    smiles: '[Pt]'
+    thermo:
+      polys:
+      - Tmax: 1554.811414369079
+        Tmin: 100.0
+        coefs:
+        - 0.007101292491293844
+        - -4.256095765345643e-05
+        - 8.985066905902444e-08
+        - -7.801690455708742e-11
+        - 2.3245813517381662e-14
+        - -1400.7028083992168
+        - -7.634470476369645
+        type: NASApolynomial
+      - Tmax: 5000.0
+        Tmin: 1554.811414369079
+        coefs:
+        - 0.16030297901502596
+        - -0.00025223982090109853
+        - 1.1418351136804438e-07
+        - -1.2147644027817653e-11
+        - 3.858268005982801e-16
+        - -1470.63841257064
+        - -8.512895186178795
+        type: NASApolynomial
+      type: NASA
+    type: Species
+  - adjlist: '1 O u0 p2 c0 {3,D}
+
+      2 O u0 p2 c0 {3,D}
+
+      3 C u0 p0 c0 {1,D} {2,D}
+
+      4 X u0 p0 c0
+
+      '
+    comment: 'Thermo library corrected for liquid phase: surfaceThermoPt111 Binding
+      energy corrected by LSR () from Pt111 (H=+0kJ/mol) + Solvation correction (H=-16kJ/mol;S=-52J/mol/K)
+      with water as solvent and solute estimated using Solute library: carbon dioxide'
+    name: CO2X
+    radicalelectrons: 0
+    smiles: O=C=O.[Pt]
+    thermo:
+      polys:
+      - Tmax: 875.1660214053117
+        Tmin: 100.0
+        coefs:
+        - -1.4624813893664308
+        - 0.0378472122328301
+        - -7.612285898213851e-05
+        - 7.183280160655723e-08
+        - -2.506877285225512e-11
+        - -54382.715342399635
+        - 5.86482723590076
+        type: NASApolynomial
+      - Tmax: 5000.0
+        Tmin: 875.1660214053117
+        coefs:
+        - 2.041965413054186
+        - 0.009073926684682616
+        - -4.943309717233382e-06
+        - 9.564794046638172e-10
+        - -6.468999978255914e-14
+        - -54507.60908561202
+        - -7.783910372866582
+        type: NASApolynomial
+      type: NASA
+    type: Species
+  - adjlist: '1 O u0 p2 c0 {3,S} {5,S}
+
+      2 O u0 p2 c0 {3,D}
+
+      3 C u0 p0 c0 {1,S} {2,D} {4,S}
+
+      4 H u0 p0 c0 {3,S}
+
+      5 X u0 p0 c0 {1,S}
+
+      '
+    comment: 'Thermo library corrected for liquid phase: surfaceThermoPt111 Binding
+      energy corrected by LSR (0.50O) from Pt111 (H=+34kJ/mol) + Solvation correction
+      (H=-41kJ/mol;S=-53J/mol/K) with water as solvent and solute estimated using
+      Solute library: formic acid + radical(RC(O)OJ)'
+    name: CHO2X
+    radicalelectrons: 0
+    smiles: O=C[O][Pt]
+    thermo:
+      polys:
+      - Tmax: 857.8738313200264
+        Tmin: 100.0
+        coefs:
+        - -1.8773252344800369
+        - 0.047437768647864614
+        - -8.896359102163126e-05
+        - 8.241770421469912e-08
+        - -2.8798031569471308e-11
+        - -46257.45249566724
+        - 1.6803246751854533
+        type: NASApolynomial
+      - Tmax: 5000.0
+        Tmin: 857.8738313200264
+        coefs:
+        - 2.6389645929788537
+        - 0.013522928602012407
+        - -7.183000034173141e-06
+        - 1.3950800958316482e-09
+        - -9.558242740061922e-14
+        - -46559.23813374479
+        - -16.658450184483385
+        type: NASApolynomial
+      type: NASA
+    type: Species
+  - adjlist: '1 O u0 p2 c0 {3,S} {4,S}
+
+      2 O u0 p2 c0 {3,D}
+
+      3 C u0 p0 c0 {1,S} {2,D} {5,S}
+
+      4 H u0 p0 c0 {1,S}
+
+      5 X u0 p0 c0 {3,S}
+
+      '
+    comment: 'Thermo library corrected for liquid phase: surfaceThermoPt111 Binding
+      energy corrected by LSR (0.25C) from Pt111 (H=+85kJ/mol) + Solvation correction
+      (H=-47kJ/mol;S=-56J/mol/K) with water as solvent and solute estimated using
+      Solute library: formic acid'
+    name: CO2HX
+    radicalelectrons: 0
+    smiles: O=[C](O)[Pt]
+    thermo:
+      polys:
+      - Tmax: 816.8977308569235
+        Tmin: 100.0
+        coefs:
+        - -1.6332721947445166
+        - 0.038782387039371584
+        - -6.419677755055497e-05
+        - 5.366540107539754e-08
+        - -1.7457639193386052e-11
+        - -52968.08095574815
+        - 5.238828697188709
+        type: NASApolynomial
+      - Tmax: 5000.0
+        Tmin: 816.8977308569235
+        coefs:
+        - 3.907197977255378
+        - 0.008951363608940279
+        - -4.459692859747232e-06
+        - 8.656528019684817e-10
+        - -6.001377636071725e-14
+        - -53783.13519457988
+        - -19.8184712553623
+        type: NASApolynomial
+      type: NASA
+    type: Species
+  - adjlist: '1 O u0 p2 c0 {2,D}
+
+      2 C u0 p0 c0 {1,D} {3,D}
+
+      3 X u0 p0 c0 {2,D}
+
+      '
+    comment: 'Thermo library corrected for liquid phase: surfaceThermoPt111 Binding
+      energy corrected by LSR (0.50C) from Pt111 (H=+170kJ/mol) + Solvation correction
+      (H=-24kJ/mol;S=-35J/mol/K) with water as solvent and solute estimated using
+      Solute library: formaldehyde'
+    name: OCX
+    radicalelectrons: 0
+    smiles: O=[C]=[Pt]
+    thermo:
+      polys:
+      - Tmax: 883.2062378027227
+        Tmin: 100.0
+        coefs:
+        - -1.2700331691998805
+        - 0.03293740775282176
+        - -6.79036870000927e-05
+        - 6.382189736239857e-08
+        - -2.2054867847597455e-11
+        - -16692.83680256776
+        - -0.6186235696871042
+        type: NASApolynomial
+      - Tmax: 5000.0
+        Tmin: 883.2062378027227
+        coefs:
+        - 2.036906660727101
+        - 0.00654280214644332
+        - -3.6849924139525184e-06
+        - 7.109972877995157e-10
+        - -4.7582629137755307e-14
+        - -16831.660851404165
+        - -13.640955921718964
+        type: NASApolynomial
+      type: NASA
+    type: Species
+  - adjlist: '1 O u0 p2 c0 {2,D}
+
+      2 X u0 p0 c0 {1,D}
+
+      '
+    comment: 'Thermo library corrected for liquid phase: surfaceThermoPt111 Binding
+      energy corrected by LSR (1.00O) from Pt111 (H=+68kJ/mol) + Solvation correction
+      (H=-45kJ/mol;S=-59J/mol/K) with water as solvent and solute estimated using
+      Solute library: water'
+    name: OX
+    radicalelectrons: 0
+    smiles: '[O]=[Pt]'
+    thermo:
+      polys:
+      - Tmax: 873.7267448495824
+        Tmin: 100.0
+        coefs:
+        - -0.7124813395967401
+        - 0.01714681131532923
+        - -3.226946685551658e-05
+        - 2.7590855930541878e-08
+        - -8.844314714739074e-12
+        - -13712.980140606087
+        - -5.466043869042167
+        type: NASApolynomial
+      - Tmax: 5000.0
+        Tmin: 873.7267448495824
+        coefs:
+        - 2.1366023808994434
+        - 0.0014725694091818743
+        - -8.435299164069143e-07
+        - 1.6611999761616814e-10
+        - -1.1172998532163356e-14
+        - -14110.42381962241
+        - -18.251967549196095
+        type: NASApolynomial
+      type: NASA
+    type: Species
+  - adjlist: '1 O u0 p2 c0 {3,S} {5,S}
+
+      2 O u0 p2 c0 {3,D}
+
+      3 C u0 p0 c0 {1,S} {2,D} {4,S}
+
+      4 H u0 p0 c0 {3,S}
+
+      5 H u0 p0 c0 {1,S}
+
+      6 X u0 p0 c0
+
+      '
+    comment: 'Thermo library corrected for liquid phase: surfaceThermoPt111 Binding
+      energy corrected by LSR () from Pt111 (H=+0kJ/mol) + Solvation correction (H=-47kJ/mol;S=-56J/mol/K)
+      with water as solvent and solute estimated using Solute library: formic acid'
+    name: CH2O2X
+    radicalelectrons: 0
+    smiles: O=CO.[Pt]
+    thermo:
+      polys:
+      - Tmax: 855.6925612820455
+        Tmin: 100.0
+        coefs:
+        - -1.866362105016126
+        - 0.04641691595730009
+        - -8.231799360684183e-05
+        - 7.464279945957968e-08
+        - -2.5799039681436e-11
+        - -58909.0362153837
+        - 10.535478204293577
+        type: NASApolynomial
+      - Tmax: 5000.0
+        Tmin: 855.6925612820455
+        coefs:
+        - 2.697720538626811
+        - 0.014309919223049387
+        - -7.152840123303513e-06
+        - 1.3705080441897964e-09
+        - -9.363008665818521e-14
+        - -59295.76402453462
+        - -8.467949874633307
+        type: NASApolynomial
+      type: NASA
+    type: Species
+  - adjlist: '1 O u0 p2 c0 {2,D}
+
+      2 C u0 p0 c0 {1,D} {3,S} {4,S}
+
+      3 H u0 p0 c0 {2,S}
+
+      4 X u0 p0 c0 {2,S}
+
+      '
+    comment: 'Thermo library corrected for liquid phase: surfaceThermoPt111 Binding
+      energy corrected by LSR (0.25C) from Pt111 (H=+85kJ/mol) + Solvation correction
+      (H=-24kJ/mol;S=-35J/mol/K) with water as solvent and solute estimated using
+      Solute library: formaldehyde'
+    name: CHOX
+    radicalelectrons: 0
+    smiles: O=[CH][Pt]
+    thermo:
+      polys:
+      - Tmax: 864.7270909207649
+        Tmin: 100.0
+        coefs:
+        - -1.3836829941647648
+        - 0.03477449216725185
+        - -6.470670673057845e-05
+        - 5.926996984115095e-08
+        - -2.045275664864379e-11
+        - -20371.33852049935
+        - 2.9794223077420807
+        type: NASApolynomial
+      - Tmax: 5000.0
+        Tmin: 864.7270909207649
+        coefs:
+        - 2.137505291321585
+        - 0.009374539079368686
+        - -4.8407397567682274e-06
+        - 9.302753194763859e-10
+        - -6.327350461348845e-14
+        - -20639.640799459372
+        - -11.526682964945254
+        type: NASApolynomial
+      type: NASA
+    type: Species
+  - adjlist: '1 O u0 p2 c0 {2,D}
+
+      2 C u0 p0 c0 {1,D} {3,S} {4,S}
+
+      3 H u0 p0 c0 {2,S}
+
+      4 H u0 p0 c0 {2,S}
+
+      5 X u0 p0 c0
+
+      '
+    comment: 'Thermo library corrected for liquid phase: surfaceThermoPt111 Binding
+      energy corrected by LSR () from Pt111 (H=+0kJ/mol) + Solvation correction (H=-24kJ/mol;S=-35J/mol/K)
+      with water as solvent and solute estimated using Solute library: formaldehyde'
+    name: CH2OX
+    radicalelectrons: 0
+    smiles: C=O.[Pt]
+    thermo:
+      polys:
+      - Tmax: 875.776212511083
+        Tmin: 100.0
+        coefs:
+        - -1.4137538287778497
+        - 0.03911643820118398
+        - -8.117423459985178e-05
+        - 8.225298126393445e-08
+        - -3.030926037523901e-11
+        - -23248.579703173724
+        - 7.74477334273979
+        type: NASApolynomial
+      - Tmax: 5000.0
+        Tmin: 875.776212511083
+        coefs:
+        - -0.5178898871215813
+        - 0.015759814468110263
+        - -8.173566230167317e-06
+        - 1.565018012257916e-09
+        - -1.058635149675319e-13
+        - -22666.702430105106
+        - 7.759509199248618
+        type: NASApolynomial
+      type: NASA
+    type: Species
+  - adjlist: '1 O u0 p2 c0 {2,S} {3,S}
+
+      2 H u0 p0 c0 {1,S}
+
+      3 X u0 p0 c0 {1,S}
+
+      '
+    comment: 'Thermo library corrected for liquid phase: surfaceThermoPt111 Binding
+      energy corrected by LSR (0.50O) from Pt111 (H=+34kJ/mol) + Solvation correction
+      (H=-36kJ/mol;S=-54J/mol/K) with water as solvent and solute estimated using
+      Solute library: water + radical(ROJ)'
+    name: HOX
+    radicalelectrons: 0
+    smiles: '[OH][Pt]'
+    thermo:
+      polys:
+      - Tmax: 913.9125555539451
+        Tmin: 100.0
+        coefs:
+        - -1.32357650801617
+        - 0.0348666073434929
+        - -7.481490172823508e-05
+        - 7.00812931918583e-08
+        - -2.3715308264402104e-11
+        - -18972.87175924399
+        - 1.9604733552080065
+        type: NASApolynomial
+      - Tmax: 5000.0
+        Tmin: 913.9125555539451
+        coefs:
+        - 2.233759936827577
+        - 0.005109228225582532
+        - -2.688105185551839e-06
+        - 4.809370393097473e-10
+        - -2.9567765241700184e-14
+        - -19030.587583639117
+        - -11.63981170905534
+        type: NASApolynomial
+      type: NASA
+    type: Species
+  - adjlist: '1 O u0 p2 c0 {3,S} {6,S}
+
+      2 O u0 p2 c0 {3,S} {5,S}
+
+      3 C u0 p0 c0 {1,S} {2,S} {4,S} {7,S}
+
+      4 H u0 p0 c0 {3,S}
+
+      5 H u0 p0 c0 {2,S}
+
+      6 H u0 p0 c0 {1,S}
+
+      7 X u0 p0 c0 {3,S}
+
+      '
+    comment: 'Gas phase thermo for O[CH]O from Thermo library corrected for liquid
+      phase: thermo_DFT_CCSDTF12_BAC + radical(OCJO). Adsorption correction: + Thermo
+      group additivity estimation: adsorptionPt111(C-*R2OR) Binding energy corrected
+      by LSR (0.25C) from Pt111 (H=+85kJ/mol) + Solvation correction (H=-53kJ/mol;S=-71J/mol/K)
+      with water as solvent and solute estimated using group(O2s-CsH) + group(O2s-CsH)
+      + group(Cs-OsOsHH)'
+    name: O[CH](O)[Pt]
+    radicalelectrons: 0
+    smiles: O[CH](O)[Pt]
+    thermo:
+      polys:
+      - Tmax: 806.4955599707548
+        Tmin: 100.0
+        coefs:
+        - 2.994249021594884
+        - 0.02550676569420992
+        - -4.042193830808929e-05
+        - 3.9349801707761545e-08
+        - -1.512799899934722e-11
+        - -48665.17338292482
+        - -16.952196416167517
+        type: NASApolynomial
+      - Tmax: 5000.0
+        Tmin: 806.4955599707548
+        coefs:
+        - 3.807735590037231
+        - 0.014598074269374263
+        - -7.347901289569157e-06
+        - 1.4417495518829342e-09
+        - -1.0113690523714063e-13
+        - -48572.832921661015
+        - -19.315886749276057
+        type: NASApolynomial
+      type: NASA
+    type: Species
+  name: surface
+Reactions:
+- comment: ''
+  electronchange: 0
+  kinetics:
+    A: 0.005
+    Ea: 0.0
+    n: 0.0
+    type: StickingCoefficient
+  products:
+  - CO2X
+  radicalchange: 0
+  reactants:
+  - vacantX
+  - CO2
+  type: ElementaryReaction
+- comment: ''
+  electronchange: 0
+  kinetics:
+    A: 3.7e+17
+    Ea: 117600.0
+    n: 0.0
+    type: Arrhenius
+  products:
+  - vacantX
+  - CO2X
+  radicalchange: 0
+  reactants:
+  - OX
+  - OCX
+  type: ElementaryReaction
+- comment: 'Estimated using an average for rate rule [Adsorbate1]
+
+    Euclidian distance = 0
+
+    family: Surface_Migration'
+  electronchange: 0
+  kinetics:
+    A: 2499999999999.9995
+    Ea: 60523.33333333338
+    n: 0.0
+    type: Arrhenius
+  products:
+  - CO2HX
+  radicalchange: 0
+  reactants:
+  - CHO2X
+  type: ElementaryReaction
+- comment: 'Exact match found for rate rule [O=C=OX;Proton]
+
+    Euclidian distance = 0
+
+    family: Surface_Proton_Electron_Reduction_Beta_vdW
+
+    Ea raised from 50.0 to 85.3 kJ/mol to match endothermicity of reaction.'
+  electronchange: 1
+  kinetics:
+    A: 250000000000000.0
+    Ea: 62276.62984992798
+    n: 0.0
+    q: 0.25
+    type: Arrheniusq
+  products:
+  - CHO2X
+  radicalchange: 0
+  reactants:
+  - proton
+  - CO2X
+  type: ElementaryReaction
+- comment: 'From training reaction 1 used for ORX;Proton
+
+    Exact match found for rate rule [ORX;Proton]
+
+    Euclidian distance = 0
+
+    family: Surface_Proton_Electron_Reduction_Beta_vdW'
+  electronchange: 1
+  kinetics:
+    A: 25000000000.0
+    Ea: 75249.98822394572
+    n: 0.0
+    q: 0.5
+    type: Arrheniusq
+  products:
+  - CO2HX
+  radicalchange: 0
+  reactants:
+  - proton
+  - CO2X
+  type: ElementaryReaction
+- comment: 'From training reaction 2 used for OX;Proton
+
+    Exact match found for rate rule [OX;Proton]
+
+    Euclidian distance = 0
+
+    family: Surface_Proton_Electron_Reduction_Alpha_vdW'
+  electronchange: 1
+  kinetics:
+    A: 25000000000.0
+    Ea: 3012.3559299445205
+    n: 0.0
+    q: 0.5
+    type: Arrheniusq
+  products:
+  - CH2O2X
+  radicalchange: 0
+  reactants:
+  - proton
+  - CHO2X
+  type: ElementaryReaction
+- comment: 'From training reaction 1 used for CX;Proton
+
+    Exact match found for rate rule [CX;Proton]
+
+    Euclidian distance = 0
+
+    family: Surface_Proton_Electron_Reduction_Alpha_vdW'
+  electronchange: 1
+  kinetics:
+    A: 25000000000.0
+    Ea: 48898.2091095261
+    n: 0.0
+    q: 0.5
+    type: Arrheniusq
+  products:
+  - CH2O2X
+  radicalchange: 0
+  reactants:
+  - proton
+  - CO2HX
+  type: ElementaryReaction
+- comment: 'Estimated using template [C=X;Proton] for rate rule [O=C=X;Proton]
+
+    Euclidian distance = 1.0
+
+    family: Surface_Proton_Electron_Reduction_Alpha'
+  electronchange: 1
+  kinetics:
+    A: 25000000000.0
+    Ea: 34575.95926752735
+    n: 0.0
+    q: 0.5
+    type: Arrheniusq
+  products:
+  - CHOX
+  radicalchange: 0
+  reactants:
+  - proton
+  - OCX
+  type: ElementaryReaction
+- comment: 'From training reaction 1 used for CX;Proton
+
+    Exact match found for rate rule [CX;Proton]
+
+    Euclidian distance = 0
+
+    family: Surface_Proton_Electron_Reduction_Alpha_vdW'
+  electronchange: 1
+  kinetics:
+    A: 25000000000.0
+    Ea: 54779.82771855402
+    n: 0.0
+    q: 0.5
+    type: Arrheniusq
+  products:
+  - CH2OX
+  radicalchange: 0
+  reactants:
+  - proton
+  - CHOX
+  type: ElementaryReaction
+- comment: 'Estimated using template [Adsorbate;VacantSite1;VacantSite2] for rate
+    rule [CO2;VacantSite1;VacantSite2]
+
+    Euclidian distance = 2.0
+
+    Multiplied by reaction path degeneracy 2.0
+
+    family: Surface_Adsorption_Dissociative_Double
+
+    Ea raised from 187.4 to 188.8 kJ/mol to match endothermicity of reaction.'
+  electronchange: 0
+  kinetics:
+    A: 0.02
+    Ea: 188799.94201580342
+    n: 0.0
+    type: StickingCoefficient
+  products:
+  - OX
+  - OCX
+  radicalchange: 0
+  reactants:
+  - vacantX
+  - vacantX
+  - CO2
+  type: ElementaryReaction
+- comment: 'Matched reaction 28 HCOO* + Ni_4 <=> HCO* + OX_3 in Surface_Dissociation/training
+
+    This reaction matched rate rule [O-C=O;VacantSite]
+
+    family: Surface_Dissociation
+
+    metal: None'
+  electronchange: 0
+  kinetics:
+    A: 8.733e+16
+    Ea: 227705.4079759764
+    n: 0.0
+    type: Arrhenius
+  products:
+  - OX
+  - CHOX
+  radicalchange: 0
+  reactants:
+  - vacantX
+  - CHO2X
+  type: ElementaryReaction
+- comment: 'Estimated using template [Abstracting;Donating] for rate rule [Abstracting;R-C-H]
+
+    Euclidian distance = 1.0
+
+    family: Surface_Abstraction_Beta_double_vdW'
+  electronchange: 0
+  kinetics:
+    A: 4.18e+17
+    Ea: 0.0
+    n: 0.0
+    type: Arrhenius
+  products:
+  - CO2X
+  - CH2O2X
+  radicalchange: 0
+  reactants:
+  - CHO2X
+  - CHO2X
+  type: ElementaryReaction
+- comment: 'Estimated using template [Abstracting;Donating] for rate rule [Abstracting;R-C-H]
+
+    Euclidian distance = 1.0
+
+    family: Surface_Abstraction_Beta_double_vdW'
+  electronchange: 0
+  kinetics:
+    A: 4.18e+17
+    Ea: 26227.25171408696
+    n: 0.0
+    type: Arrhenius
+  products:
+  - CO2X
+  - CH2O2X
+  radicalchange: 0
+  reactants:
+  - CHO2X
+  - CO2HX
+  type: ElementaryReaction
+- comment: 'Estimated using template [Abstracting;Donating] for rate rule [Abstracting;R-O-H]
+
+    Euclidian distance = 1.0
+
+    family: Surface_Abstraction_Beta_double_vdW'
+  electronchange: 0
+  kinetics:
+    A: 4.18e+17
+    Ea: 26227.25171408696
+    n: 0.0
+    type: Arrhenius
+  products:
+  - CO2X
+  - CH2O2X
+  radicalchange: 0
+  reactants:
+  - CHO2X
+  - CO2HX
+  type: ElementaryReaction
+- comment: 'Estimated using template [Abstracting;Donating] for rate rule [Abstracting;R-O-H]
+
+    Euclidian distance = 1.0
+
+    family: Surface_Abstraction_Beta_double_vdW'
+  electronchange: 0
+  kinetics:
+    A: 4.18e+17
+    Ea: 64984.89719971019
+    n: 0.0
+    type: Arrhenius
+  products:
+  - CO2X
+  - CH2O2X
+  radicalchange: 0
+  reactants:
+  - CO2HX
+  - CO2HX
+  type: ElementaryReaction
+- comment: 'Estimated using template [Abstracting;Donating] for rate rule [Abstracting;R-C-H]
+
+    Euclidian distance = 1.0
+
+    family: Surface_Abstraction_Beta_double_vdW'
+  electronchange: 0
+  kinetics:
+    A: 4.18e+17
+    Ea: 43165.28869169279
+    n: 0.0
+    type: Arrhenius
+  products:
+  - CO2X
+  - CH2OX
+  radicalchange: 0
+  reactants:
+  - CHOX
+  - CHO2X
+  type: ElementaryReaction
+- comment: 'Estimated using template [Abstracting;Donating] for rate rule [Abstracting;R-O-H]
+
+    Euclidian distance = 1.0
+
+    family: Surface_Abstraction_Beta_double_vdW'
+  electronchange: 0
+  kinetics:
+    A: 4.18e+17
+    Ea: 81922.93417731601
+    n: 0.0
+    type: Arrhenius
+  products:
+  - CO2X
+  - CH2OX
+  radicalchange: 0
+  reactants:
+  - CHOX
+  - CO2HX
+  type: ElementaryReaction
+- comment: 'Estimated using template [Abstracting;Donating] for rate rule [Abstracting;R-O-H]
+
+    Euclidian distance = 1.0
+
+    family: Surface_Abstraction_Beta_double_vdW'
+  electronchange: 0
+  kinetics:
+    A: 4.18e+17
+    Ea: 26227.25171408696
+    n: 0.0
+    type: Arrhenius
+  products:
+  - CO2X
+  - CH2O2X
+  radicalchange: 0
+  reactants:
+  - CHO2X
+  - CO2HX
+  type: ElementaryReaction
+- comment: 'Estimated using template [Abstracting;Donating] for rate rule [Abstracting;R-C-H]
+
+    Euclidian distance = 1.0
+
+    family: Surface_Abstraction_Beta_double_vdW'
+  electronchange: 0
+  kinetics:
+    A: 4.18e+17
+    Ea: 26227.25171408696
+    n: 0.0
+    type: Arrhenius
+  products:
+  - CO2X
+  - CH2O2X
+  radicalchange: 0
+  reactants:
+  - CHO2X
+  - CO2HX
+  type: ElementaryReaction
+- comment: 'Estimated using template [Donating;Abstracting] for rate rule [C-R;*O]
+
+    Euclidian distance = 1.4142135623730951
+
+    family: Surface_Abstraction_Single_vdW'
+  electronchange: 0
+  kinetics:
+    A: 4.18e+17
+    Ea: 75723.25476987375
+    n: 0.0
+    type: Arrhenius
+  products:
+  - CO2HX
+  - CH2O2X
+  radicalchange: 0
+  reactants:
+  - CHO2X
+  - CH2O2X
+  type: ElementaryReaction
+- comment: 'Matched reaction 41 HCOO_1* + HCO* <=> HCOOH* + CO* in Surface_Abstraction_vdW/training
+
+    This reaction matched rate rule [O-R;*=C=R]
+
+    family: Surface_Abstraction_vdW
+
+    metal: None'
+  electronchange: 0
+  kinetics:
+    A: 7.475e+18
+    Ea: 57891.205417621124
+    n: 0.0
+    type: Arrhenius
+  products:
+  - OCX
+  - CH2O2X
+  radicalchange: 0
+  reactants:
+  - CHOX
+  - CHO2X
+  type: ElementaryReaction
+- comment: 'Estimated using template [Donating;Abstracting] for rate rule [C-R;*O]
+
+    Euclidian distance = 1.4142135623730951
+
+    Multiplied by reaction path degeneracy 2.0
+
+    family: Surface_Abstraction_Single_vdW'
+  electronchange: 0
+  kinetics:
+    A: 8.36e+17
+    Ea: 52308.909536124585
+    n: 0.0
+    type: Arrhenius
+  products:
+  - CHOX
+  - CH2O2X
+  radicalchange: 0
+  reactants:
+  - CHO2X
+  - CH2OX
+  type: ElementaryReaction
+- comment: 'Estimated using template [AdsorbateVdW;*=C=R] for rate rule [C-R;*=C=R]
+
+    Euclidian distance = 1.0
+
+    family: Surface_Abstraction_vdW'
+  electronchange: 0
+  kinetics:
+    A: 295479884886447.6
+    Ea: 123451.69090685455
+    n: 0.9956894270665702
+    type: Arrhenius
+  products:
+  - CHOX
+  - CO2HX
+  radicalchange: 0
+  reactants:
+  - OCX
+  - CH2O2X
+  type: ElementaryReaction
+- comment: 'Estimated using template [AdsorbateVdW;*=C=R] for rate rule [C-OH;*=C=R]
+
+    Euclidian distance = 3.0
+
+    family: Surface_Abstraction_vdW'
+  electronchange: 0
+  kinetics:
+    A: 295479884886447.6
+    Ea: 123451.69090685455
+    n: 0.9956894270665702
+    type: Arrhenius
+  products:
+  - CHOX
+  - CO2HX
+  radicalchange: 0
+  reactants:
+  - OCX
+  - CH2O2X
+  type: ElementaryReaction
+- comment: 'Estimated using template [Donating;Abstracting] for rate rule [C-R;*C=R]
+
+    Euclidian distance = 2.23606797749979
+
+    Multiplied by reaction path degeneracy 2.0
+
+    family: Surface_Abstraction_Single_vdW'
+  electronchange: 0
+  kinetics:
+    A: 8.36e+17
+    Ea: 105885.6547662508
+    n: 0.0
+    type: Arrhenius
+  products:
+  - CHOX
+  - CH2O2X
+  radicalchange: 0
+  reactants:
+  - CO2HX
+  - CH2OX
+  type: ElementaryReaction
+- comment: 'Estimated using template [AdsorbateVdW;*=C=R] for rate rule [C-OH;*=C=R]
+
+    Euclidian distance = 3.0
+
+    family: Surface_Abstraction_vdW'
+  electronchange: 0
+  kinetics:
+    A: 295479884886447.6
+    Ea: 123451.69090685455
+    n: 0.9956894270665702
+    type: Arrhenius
+  products:
+  - CHOX
+  - CO2HX
+  radicalchange: 0
+  reactants:
+  - OCX
+  - CH2O2X
+  type: ElementaryReaction
+- comment: 'Estimated using template [AdsorbateVdW;*=C=R] for rate rule [C-R;*=C=R]
+
+    Euclidian distance = 1.0
+
+    family: Surface_Abstraction_vdW'
+  electronchange: 0
+  kinetics:
+    A: 295479884886447.6
+    Ea: 123451.69090685455
+    n: 0.9956894270665702
+    type: Arrhenius
+  products:
+  - CHOX
+  - CO2HX
+  radicalchange: 0
+  reactants:
+  - OCX
+  - CH2O2X
+  type: ElementaryReaction
+- comment: 'Estimated using template [AdsorbateVdW;*=C=R] for rate rule [C-R;*=C=R]
+
+    Euclidian distance = 1.0
+
+    Multiplied by reaction path degeneracy 2.0
+
+    family: Surface_Abstraction_vdW'
+  electronchange: 0
+  kinetics:
+    A: 590959769772895.2
+    Ea: 123451.69090685455
+    n: 0.9956894270665702
+    type: Arrhenius
+  products:
+  - CHOX
+  - CHOX
+  radicalchange: 0
+  reactants:
+  - OCX
+  - CH2OX
+  type: ElementaryReaction
+- comment: 'From training reaction 7 used for OX;Proton
+
+    Exact match found for rate rule [OX;Proton]
+
+    Euclidian distance = 0
+
+    family: Surface_Proton_Electron_Reduction_Alpha'
+  electronchange: 1
+  kinetics:
+    A: 25000000000.0
+    Ea: 6012.046202226054
+    n: 0.0
+    q: 0.5
+    type: Arrheniusq
+  products:
+  - HOX
+  radicalchange: 0
+  reactants:
+  - OX
+  - proton
+  type: ElementaryReaction
+- comment: 'Matched reaction 1 OCX_3 + HOX_5 <=> HOCXO_1 + Ni_4 in Surface_Dissociation/training
+
+    This reaction matched rate rule [C-OH;VacantSite]
+
+    family: Surface_Dissociation
+
+    metal: None'
+  electronchange: 0
+  kinetics:
+    A: 402000000000000.0
+    Ea: 11500.0
+    n: 0.0
+    type: Arrhenius
+  products:
+  - vacantX
+  - CO2HX
+  radicalchange: 0
+  reactants:
+  - HOX
+  - OCX
+  type: ElementaryReaction
+- comment: 'Matched reaction 34 HCOOH_2* + X_4 <=> HCO* + OH_2* in Surface_Dissociation_vdW/training
+
+    This reaction matched rate rule [C-OH;VacantSite]
+
+    family: Surface_Dissociation_vdW
+
+    metal: None
+
+    Ea raised from 157.3 to 174.1 kJ/mol to match endothermicity of reaction.'
+  electronchange: 0
+  kinetics:
+    A: 1.781e+17
+    Ea: 174098.9801398997
+    n: 0.0
+    type: Arrhenius
+  products:
+  - HOX
+  - CHOX
+  radicalchange: 0
+  reactants:
+  - vacantX
+  - CH2O2X
+  type: ElementaryReaction
+- comment: 'From training reaction 46 used for O-C=R;*=O
+
+    Exact match found for rate rule [O-C=R;*=O]
+
+    Euclidian distance = 0
+
+    family: Surface_Abstraction_vdW'
+  electronchange: 0
+  kinetics:
+    A: 1.1355049650481406e+16
+    Ea: 161188.36958933496
+    n: 0.18563339879119578
+    type: Arrhenius
+  products:
+  - HOX
+  - CHO2X
+  radicalchange: 0
+  reactants:
+  - OX
+  - CH2O2X
+  type: ElementaryReaction
+- comment: 'From training reaction 34 used for O-R;*=O
+
+    Exact match found for rate rule [O-R;*=O]
+
+    Euclidian distance = 0
+
+    family: Surface_Abstraction_vdW'
+  electronchange: 0
+  kinetics:
+    A: 4.07e+20
+    Ea: 218400.0
+    n: -0.274
+    type: Arrhenius
+  products:
+  - HOX
+  - CHO2X
+  radicalchange: 0
+  reactants:
+  - OX
+  - CH2O2X
+  type: ElementaryReaction
+- comment: 'From training reaction 21 used for C-R;*=O
+
+    Exact match found for rate rule [C-R;*=O]
+
+    Euclidian distance = 0
+
+    family: Surface_Abstraction_vdW'
+  electronchange: 0
+  kinetics:
+    A: 1.405e+20
+    Ea: 92700.0
+    n: -0.101
+    type: Arrhenius
+  products:
+  - HOX
+  - CO2HX
+  radicalchange: 0
+  reactants:
+  - OX
+  - CH2O2X
+  type: ElementaryReaction
+- comment: 'Matched reaction 39 OX_1 + HCOX_3 <=> HOX_4 + COX_5 in Surface_Abstraction/training
+
+    This reaction matched rate rule [O;*-C-H]
+
+    family: Surface_Abstraction
+
+    metal: None'
+  electronchange: 0
+  kinetics:
+    A: 3.298e+17
+    Ea: 0.0
+    n: 0.0
+    type: Arrhenius
+  products:
+  - HOX
+  - OCX
+  radicalchange: 0
+  reactants:
+  - OX
+  - CHOX
+  type: ElementaryReaction
+- comment: 'From training reaction 21 used for C-R;*=O
+
+    Exact match found for rate rule [C-R;*=O]
+
+    Euclidian distance = 0
+
+    Multiplied by reaction path degeneracy 2.0
+
+    family: Surface_Abstraction_vdW'
+  electronchange: 0
+  kinetics:
+    A: 2.81e+20
+    Ea: 92700.0
+    n: -0.101
+    type: Arrhenius
+  products:
+  - HOX
+  - CHOX
+  radicalchange: 0
+  reactants:
+  - OX
+  - CH2OX
+  type: ElementaryReaction
+- comment: 'From training reaction 34 used for O-R;*=O
+
+    Exact match found for rate rule [O-R;*=O]
+
+    Euclidian distance = 0
+
+    family: Surface_Abstraction_vdW'
+  electronchange: 0
+  kinetics:
+    A: 4.07e+20
+    Ea: 218400.0
+    n: -0.274
+    type: Arrhenius
+  products:
+  - HOX
+  - CHO2X
+  radicalchange: 0
+  reactants:
+  - OX
+  - CH2O2X
+  type: ElementaryReaction
+- comment: 'From training reaction 46 used for O-C=R;*=O
+
+    Exact match found for rate rule [O-C=R;*=O]
+
+    Euclidian distance = 0
+
+    family: Surface_Abstraction_vdW'
+  electronchange: 0
+  kinetics:
+    A: 1.1355049650481406e+16
+    Ea: 161188.36958933496
+    n: 0.18563339879119578
+    type: Arrhenius
+  products:
+  - HOX
+  - CHO2X
+  radicalchange: 0
+  reactants:
+  - OX
+  - CH2O2X
+  type: ElementaryReaction
+- comment: 'From training reaction 1 used for ORX;Proton
+
+    Exact match found for rate rule [ORX;Proton]
+
+    Euclidian distance = 0
+
+    family: Surface_Proton_Electron_Reduction_Beta_vdW'
+  electronchange: 1
+  kinetics:
+    A: 25000000000.0
+    Ea: 115347.50806876807
+    n: 0.0
+    q: 0.5
+    type: Arrheniusq
+  products:
+  - O[CH](O)[Pt]
+  radicalchange: 0
+  reactants:
+  - proton
+  - CH2O2X
+  type: ElementaryReaction
+- comment: 'Estimated using template [Abstracting;Donating] for rate rule [Abstracting;R-O-H]
+
+    Euclidian distance = 1.0
+
+    Multiplied by reaction path degeneracy 2.0
+
+    family: Surface_Abstraction_Beta_double_vdW'
+  electronchange: 0
+  kinetics:
+    A: 8.36e+17
+    Ea: 0.0
+    n: 0.0
+    type: Arrhenius
+  products:
+  - CH2O2X
+  - CH2O2X
+  radicalchange: 0
+  reactants:
+  - CHO2X
+  - O[CH](O)[Pt]
+  type: ElementaryReaction
+- comment: 'Estimated using template [Abstracting;Donating] for rate rule [Abstracting;R-O-H]
+
+    Euclidian distance = 1.0
+
+    Multiplied by reaction path degeneracy 2.0
+
+    family: Surface_Abstraction_Beta_double_vdW'
+  electronchange: 0
+  kinetics:
+    A: 8.36e+17
+    Ea: 10760.85577299056
+    n: 0.0
+    type: Arrhenius
+  products:
+  - CH2O2X
+  - CH2O2X
+  radicalchange: 0
+  reactants:
+  - CO2HX
+  - O[CH](O)[Pt]
+  type: ElementaryReaction
+- comment: 'Estimated using template [Abstracting;Donating] for rate rule [Abstracting;R-O-H]
+
+    Euclidian distance = 1.0
+
+    Multiplied by reaction path degeneracy 2.0
+
+    family: Surface_Abstraction_Beta_double_vdW'
+  electronchange: 0
+  kinetics:
+    A: 8.36e+17
+    Ea: 27698.892750596395
+    n: 0.0
+    type: Arrhenius
+  products:
+  - CH2OX
+  - CH2O2X
+  radicalchange: 0
+  reactants:
+  - CHOX
+  - O[CH](O)[Pt]
+  type: ElementaryReaction
+Solvents:
+- mu:
+    A: -52.843
+    B: 3703.6
+    C: 5.866
+    D: -5.88e-29
+    E: 10.0
+    type: RiedelViscosity
+  name: water
+  type: Solvent
+Units: {}
