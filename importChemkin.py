@@ -640,7 +640,7 @@ class ModelMatcher():
         rmg.reactionLibraries = [('BurkeH2O2inN2', False),
                                  ('Glarborg/C3', False),
                                  ('Glarborg/highP', False),
-                                 ('GRI-Mech3.0', False), ]
+                                 ('GRI-Mech3.0-N', False), ]
 
         rmgpy.rmg.input.rmg = rmg  # put it in this scope so these functions can modify it
 
