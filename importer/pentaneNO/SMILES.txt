@@ -46,6 +46,9 @@ C3H4-A	C=C=C	! Confirmed by alongd
 C3H4-P	C#CC	! Confirmed by alongd
 NO	[N]=O	! Confirmed by alongd
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 917ed70a5 (imported pentaneNO)
 HNO	N=O	! Confirmed by alongd
 NO3	[N+](=O)([O-])[O]	! Confirmed by alongd
 C6H101-5	C=CCCC=C	! Confirmed by alongd
@@ -824,6 +827,9 @@ NC5DIONE24	CC(=O)CC(C)=O	! Confirmed by alongd
 HCCCHCCH	[CH]=C=CC#C	! Confirmed by alongd
 C5H2	[CH]=C=C=C=[CH]	! Confirmed by alongd
 H2CCCCCH	C#CC#C[CH2]	! Confirmed by alongd
+<<<<<<< HEAD
 =======
 >>>>>>> 43dea586f (Added pentaneNO example)
+=======
+>>>>>>> 917ed70a5 (imported pentaneNO)
 
