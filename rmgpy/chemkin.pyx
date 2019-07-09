@@ -633,6 +633,7 @@ def _read_kinetics_line(line, reaction, species_dict, Eunits, kunits, klow_units
                     kinetics['efficiencies'][species_dict[collider.strip().upper()].molecule[0]] = efficiency
         except IndexError:
             error_msg = 'Could not read collider efficiencies for reaction: {0}.\n'.format(reaction)
+            error_msg += 'Collider {!r} structure not known.\n'.format(collider)
             error_msg += 'The following line was parsed incorrectly:\n{0}'.format(line)
             error_msg += "\n(Case-preserved tokens: {0!r} )".format(case_preserved_tokens)
             raise ChemkinError(error_msg)
@@ -911,7 +912,7 @@ def load_species_dictionary(path, generate_resonance_structures=True):
 def remove_comment_from_line(line):
     """
     Remove a comment from a line of a Chemkin file or species dictionary file.
-    
+
     Returns the line and the comment.
     If the comment is encoded with latin-1, it is converted to utf-8.
     """
@@ -1153,7 +1154,9 @@ cpdef _process_duplicate_reactions(list reaction_list):
                                      _kinetics.Arrhenius)):
                         reaction.kinetics.arrhenius.append(reaction2.kinetics)
                     else:
-                        raise ChemkinError('Mixed kinetics for duplicate reaction {0}.'.format(reaction))
+                        logging.info('Mixed kinetics for duplicate reaction {0}.'.format(reaction))
+                        logging.info('Not removing duplicate reaction {0}'.format(reaction))
+                        continue
 
                     duplicate_reactions_to_remove.append(reaction2)
                 elif reaction1.kinetics.is_pressure_dependent() == reaction2.kinetics.is_pressure_dependent():
@@ -1169,7 +1172,7 @@ cpdef _process_duplicate_reactions(list reaction_list):
 def read_species_block(f, species_dict, species_aliases, species_list):
     """
     Read a Species block from a chemkin file.
-    
+
     f is a file-like object that is just before the 'SPECIES' statement. When finished, it will have just passed the 'END' statement.
     species_dict is a dictionary of species that will be updated.
     species_aliases is a dictionary of species aliases that will be updated.
@@ -1187,7 +1190,7 @@ def read_species_block(f, species_dict, species_aliases, species_list):
     while 'END' not in tokens_upper:
         line = f.readline()
         # If the line contains only one species, and also contains
-        # a comment with only one token, assume that token is 
+        # a comment with only one token, assume that token is
         # intended to be the true identifier for the species, but
         # was not used e.g. due to a length limitation
         if '!' in line and len(line.split('!')) == 2:
@@ -1227,14 +1230,14 @@ def read_species_block(f, species_dict, species_aliases, species_list):
 def read_thermo_block(f, species_dict):
     """
     Read a thermochemistry block from a chemkin file.
-    
+
     f is a file-like object that is just before the 'THERM' statement.
     When finished, it will have just passed the 'END' statement.
     species_dict is a dictionary of species that will be updated with the given thermodynamics.
     
     Returns a dictionary of molecular formulae for each species, in the form
     `{'methane': {'C':1, 'H':4}}
-    
+
     If duplicate entries are found, the FIRST is used, and a warning is printed.
     """
     # List of thermodynamics (hopefully one per species!)
@@ -1336,7 +1339,7 @@ def read_thermo_block(f, species_dict):
 def read_reactions_block(f, species_dict, read_comments=True):
     """
     Read a reactions block from a Chemkin file stream.
-    
+
     This function can also read the ``reactions.txt`` and ``pdepreactions.txt``
     files from RMG-Java kinetics libraries, which have a similar syntax.
     """
@@ -2001,7 +2004,7 @@ def mark_duplicate_reactions(reactions):
     """
     For a given list of `reactions`, mark all of the duplicate reactions as
     understood by Chemkin.
-    
+
     This is pretty slow (quadratic in size of reactions list) so only call it if you're really worried
     you may have undetected duplicate reactions.
     """
@@ -2013,7 +2016,7 @@ def mark_duplicate_reactions(reactions):
 
 def save_species_dictionary(path, species, old_style=False):
     """
-    Save the given list of `species` as adjacency lists in a text file `path` 
+    Save the given list of `species` as adjacency lists in a text file `path`
     on disk.
     
     If `old_style==True` then it saves it in the old RMG-Java syntax.
@@ -2048,15 +2051,15 @@ def save_transport_file(path, species):
     r"""
     Save a Chemkin transport properties file to `path` on disk containing the
     transport properties of the given list of `species`.
-    
+
     The syntax is from the Chemkin TRANSPORT manual.
     The first 16 columns in each line of the database are reserved for the species name
-    (Presently CHEMKIN is programmed to allow no more than 16-character names.) 
+    (Presently CHEMKIN is programmed to allow no more than 16-character names.)
     Columns 17 through 80 are free-format, and they contain the molecular parameters for each species. They are, in order:
-    
+
     1. An index indicating whether the molecule has a monatomic, linear or nonlinear geometrical configuration.
-       If the index is 0, the molecule is a single atom. 
-       If the index is 1 the molecule is linear, and 
+       If the index is 0, the molecule is a single atom.
+       If the index is 1 the molecule is linear, and
        if it is 2, the molecule is nonlinear.
     2. The Lennard-Jones potential well depth  :math:`\epsilon / k_B` in Kelvins.
     3. The Lennard-Jones collision diameter :math:`\sigma` in Angstroms.
@@ -2342,7 +2345,7 @@ def write_elements_section(f):
     """
     Write the ELEMENTS section of the chemkin file.  This file currently lists
     all elements and isotopes available in RMG. It may become useful in the future
-    to only include elements/isotopes present in the current RMG run. 
+    to only include elements/isotopes present in the current RMG run.
     """
 
     s = 'ELEMENTS\n'
@@ -2372,7 +2375,7 @@ class ChemkinWriter(object):
 
 
     A new instance of the class can be appended to a subject as follows:
-    
+
     rmg = ...
     listener = ChemkinWriter(outputDirectory)
     rmg.attach(listener)
@@ -2384,7 +2387,7 @@ class ChemkinWriter(object):
     from its subject:
 
     rmg.detach(listener)
-    
+
     """
     def __init__(self, output_directory=''):
         super(ChemkinWriter, self).__init__()
