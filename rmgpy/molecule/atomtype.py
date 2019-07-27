@@ -379,7 +379,8 @@ ATOMTYPES['Val7'] = AtomType(label='Val7', generic=['R', 'R!H', 'Rx', 'Rx!H'], s
     'Cl','Cl1s',
     'Br','Br1s',
     'I','I1s',
-    'F','F1s'])
+    'F','F1s',
+    'Br','Br1s'])
 
 
 ATOMTYPES['H'] = AtomType('H', generic=['Rx','R'], specific=['H0','H+'], charge=[0,+1])
@@ -714,8 +715,19 @@ ATOMTYPES['F1s'] = AtomType('F1s', generic=['R', 'R!H', 'F', 'Val7', 'Rx', 'Rx!H
                             single=[0,1], all_double=[0], r_double=[], o_double=[], s_double=[], triple=[0], quadruple=[0], benzene=[0], lone_pairs=[3], charge=[0])
 # examples for F1s: HF, [F], FO, CH3F, F2
 
+<<<<<<< HEAD
 ATOMTYPES['Rx'].set_actions(increment_bond=['Rx'], decrement_bond=['Rx'], form_bond=['Rx'], break_bond=['Rx'], increment_radical=['Rx'], decrement_radical=['Rx'], increment_lone_pair=['Rx'], decrement_lone_pair=['Rx'], increment_charge=['Rx'], decrement_charge=['Rx'])
 ATOMTYPES['Rx!H'].set_actions(increment_bond=['Rx!H'], decrement_bond=['Rx!H'], form_bond=['Rx!H'], break_bond=['Rx!H'], increment_radical=['Rx!H'], decrement_radical=['Rx!H'], increment_lone_pair=['Rx!H'], decrement_lone_pair=['Rx!H'], increment_charge=['Rx!H'], decrement_charge=['Rx!H'])
+=======
+atomTypes['Br'  ] = AtomType('Br',   generic=['R','R!H','Val7'],      specific=['Br1s'])
+atomTypes['Br1s'] = AtomType('Br1s', generic=['R','R!H','Br','Val7'],  specific=[],
+                             single=[0,1], allDouble=[0], rDouble=[], oDouble=[], sDouble=[], triple=[0], quadruple=[0], benzene=[0], lonePairs=[3], charge=[0])
+# examples for Br1s: HBr, [Br], BrO, CH3Br, Br2
+
+atomTypes['X'   ].setActions(incrementBond=['X'],            decrementBond=['X'],            formBond=['X'],         breakBond=['X'],         incrementRadical=[],       decrementRadical=[],       incrementLonePair=[],      decrementLonePair=[])
+atomTypes['Xv'  ].setActions(incrementBond=[],               decrementBond=[],               formBond=['Xo'],        breakBond=[],            incrementRadical=[],       decrementRadical=[],       incrementLonePair=[],      decrementLonePair=[])
+atomTypes['Xo'  ].setActions(incrementBond=['Xo'],           decrementBond=['Xo'],           formBond=[],            breakBond=['Xv'],  incrementRadical=[],       decrementRadical=[],       incrementLonePair=[],      decrementLonePair=[])
+>>>>>>> e127f75fa (added Br atomtype)
 
 ATOMTYPES['e'].set_actions(increment_bond=[], decrement_bond=[], form_bond=[], break_bond=[], increment_radical=[], decrement_radical=[], increment_lone_pair=[], decrement_lone_pair=[], increment_charge=[], decrement_charge=[])
 
@@ -824,6 +836,7 @@ ATOMTYPES['P5tc'].set_actions(increment_bond=[], decrement_bond=['P5dc'], form_b
 ATOMTYPES['P5b'].set_actions(increment_bond=['P5bd'], decrement_bond=[], form_bond=['P5b'], break_bond=['P5b'], increment_radical=['P5b'], decrement_radical=['P5b'], increment_lone_pair=[], decrement_lone_pair=[], increment_charge=[], decrement_charge=[])
 ATOMTYPES['P5bd'].set_actions(increment_bond=[], decrement_bond=['P5b'], form_bond=[], break_bond=[], increment_radical=[], decrement_radical=[], increment_lone_pair=[], decrement_lone_pair=[], increment_charge=[], decrement_charge=[])
 
+<<<<<<< HEAD
 ATOMTYPES['S'].set_actions(increment_bond=['S'], decrement_bond=['S'], form_bond=['S'], break_bond=['S'], increment_radical=['S'], decrement_radical=['S'], increment_lone_pair=['S'], decrement_lone_pair=['S'],increment_charge=[], decrement_charge=[])
 ATOMTYPES['S0sc'].set_actions(increment_bond=['S0sc'], decrement_bond=['S0sc'], form_bond=['S0sc'], break_bond=['Sa', 'S0sc'], increment_radical=['S0sc'], decrement_radical=['S0sc'], increment_lone_pair=[], decrement_lone_pair=['S2s', 'S2sc', 'S2dc', 'S2tc'],increment_charge=[], decrement_charge=[])
 ATOMTYPES['Sa'].set_actions(increment_bond=[], decrement_bond=[], form_bond=['S0sc'], break_bond=[], increment_radical=[], decrement_radical=[], increment_lone_pair=[], decrement_lone_pair=['S2s'],increment_charge=[], decrement_charge=[])
@@ -850,6 +863,15 @@ ATOMTYPES['S6t'].set_actions(increment_bond=['S6td'], decrement_bond=['S6d', 'S6
 ATOMTYPES['S6td'].set_actions(increment_bond=['S6tt', 'S6tdc'], decrement_bond=['S6dc', 'S6t', 'S6dd', 'S6tdc'], form_bond=['S6td'], break_bond=['S6td'], increment_radical=['S6td'], decrement_radical=['S6td'], increment_lone_pair=['S4tdc'], decrement_lone_pair=[], increment_charge=[], decrement_charge=[])
 ATOMTYPES['S6tt'].set_actions(increment_bond=[], decrement_bond=['S6td', 'S6tdc'], form_bond=[], break_bond=[], increment_radical=[], decrement_radical=[], increment_lone_pair=[], decrement_lone_pair=[], increment_charge=[], decrement_charge=[])
 ATOMTYPES['S6tdc'].set_actions(increment_bond=['S6td', 'S6tdc', 'S6tt'], decrement_bond=['S6dc', 'S6tdc'], form_bond=['S6tdc'], break_bond=['S6tdc'], increment_radical=['S6tdc'], decrement_radical=['S6tdc'], increment_lone_pair=['S4t', 'S4tdc'], decrement_lone_pair=[], increment_charge=[], decrement_charge=[])
+=======
+atomTypes['Br'  ].setActions(incrementBond=[],               decrementBond=[],               formBond=['Br'],        breakBond=['Br'],        incrementRadical=['Br'],   decrementRadical=['Br'],   incrementLonePair=[],      decrementLonePair=[])
+atomTypes['Br1s'].setActions(incrementBond=[],               decrementBond=[],               formBond=['Br1s'],      breakBond=['Br1s'],      incrementRadical=['Br1s'], decrementRadical=['Br1s'], incrementLonePair=[],      decrementLonePair=[])
+
+#these are ordered on priority of picking if we encounter a more general atomType for make
+allElements=['H', 'C', 'O', 'N', 'S', 'Si', 'Cl', 'F','Br', 'I', 'Ne', 'Ar', 'He', 'X']
+#list of elements that do not have more specific atomTypes
+nonSpecifics=['H', 'He', 'Ne', 'Ar',]
+>>>>>>> e127f75fa (added Br atomtype)
 
 ATOMTYPES['Cl'].set_actions(increment_bond=[], decrement_bond=[], form_bond=['Cl'], break_bond=['Cl'], increment_radical=['Cl'], decrement_radical=['Cl'], increment_lone_pair=[], decrement_lone_pair=[], increment_charge=[], decrement_charge=[])
 ATOMTYPES['Cl1s'].set_actions(increment_bond=[], decrement_bond=[], form_bond=['Cl1s'], break_bond=['Cl1s'], increment_radical=['Cl1s'], decrement_radical=['Cl1s'], increment_lone_pair=[], decrement_lone_pair=[], increment_charge=[], decrement_charge=[])
