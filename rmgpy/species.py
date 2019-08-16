@@ -233,7 +233,7 @@ class Species(object):
 
     @property
     def fingerprint(self):
-        """Fingerprint of this species, taken from molecule attribute. Read-only."""
+        """Fingerprint of this species, taken from molecule attribute. Read-only. CACHED!"""
         if self._fingerprint is None:
             if self.molecule:
                 self._fingerprint = self.molecule[0].fingerprint
@@ -261,7 +261,7 @@ class Species(object):
 
     @property
     def multiplicity(self):
-        """Fingerprint of this species, taken from molecule attribute. Read-only."""
+        """Multiplicity of this species, taken from molecule attribute. Read-only."""
         if self.molecule:
             return self.molecule[0].multiplicity
         else:
