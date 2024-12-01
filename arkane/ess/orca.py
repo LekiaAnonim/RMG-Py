@@ -215,7 +215,7 @@ class OrcaLog(ESSAdapter):
             if spin_multiplicity == 0 and ' Multiplicity           Mult' in line:
                 spin_multiplicity = int(float(line.split()[3]))
 
-            if ' Mode    freq' in line:
+            if 'Mode' in line and "freq" in line:
                 frequencies = list()
                 for line_ in log[(i + 2):]:
                     if not line_.strip():
