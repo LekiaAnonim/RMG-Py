@@ -218,6 +218,8 @@ class OrcaLog(ESSAdapter):
             if 'Mode' in line and "freq" in line:
                 frequencies = list()
                 for line_ in log[(i + 2):]:
+                    if "------" in line_:
+                        continue
                     if not line_.strip():
                         break
                     frequencies.extend([float(line_.split()[1])])
