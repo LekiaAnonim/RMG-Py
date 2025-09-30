@@ -1880,5 +1880,13 @@ def same_species_lists(list1, list2, check_identical=False, only_check_label=Fal
                     break # this permutation not right
             else:  # didn't break, so all N match in this order 
                 return True
+        # General case for N species 
+        num = len(list1) 
+        for permutation in itertools.permutations(range(num), num): 
+            for i,j in enumerate(permutation): 
+                if not same(list1[0], list2[j]): 
+                    break # this permutation not right
+            else:  # didn't break, so all N match in this order 
+                return True
     # nothing found
     return False

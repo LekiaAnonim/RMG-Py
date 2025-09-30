@@ -483,6 +483,14 @@ def from_adjacency_list(adjlist, group=False, saturate_h=False, check_consistenc
         if len(lines) == 0:
             raise InvalidAdjacencyListError('No atoms specified in adjacency list: \n{0}'.format(adjlist))
 
+    if lines[0].split()[0] == 'molecularTermSymbol':
+        line = lines.pop(0)
+        match = re.match('\s*molecularTermSymbol\s+\S+\s*$', line)
+        assert match, "Invalid molecularTermSymbol line '{0}'. Should be a string like 'molecularTermSymbol A^2S+'".format(line)
+        molecularTermSymbol = line.split()[1]
+        if len(lines) == 0:
+            raise InvalidAdjacencyListError('No atoms specified in adjacency list: \n{0}'.format(adjlist))
+
     # Detect old-style adjacency lists by looking at the last line's syntax
     last_line = lines[-1].strip()
     while not last_line:  # Remove any empty lines from the end
@@ -605,6 +613,7 @@ def from_adjacency_list(adjlist, group=False, saturate_h=False, check_consistenc
         # First item is index for atom
         # Sometimes these have a trailing period (as if in a numbered list),
         # so remove it just in case
+        
         
         aid = int(data[0].strip('.'))
 

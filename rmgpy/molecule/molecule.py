@@ -1027,6 +1027,7 @@ class Molecule(Graph):
         self.symmetry_number = symmetry
         self.multiplicity = multiplicity
         self.molecularTermSymbol = molecularTermSymbol
+        self.molecularTermSymbol = molecularTermSymbol
         self.reactive = reactive
         self._fingerprint = None
         self._inchi = None
@@ -1610,6 +1611,7 @@ class Molecule(Graph):
         mapping from `self` to `other` (i.e. the atoms of `self` are the keys,
         while the atoms of `other` are the values). The `other` parameter must
         be a :class:`Molecule` object, or a :class:`TypeError` is raised.
+        Also ensures multiplicities and molecularTermSymbol are also equal.
         Also ensures multiplicities and molecularTermSymbol are also equal.
 
         Args:
