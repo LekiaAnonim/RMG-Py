@@ -99,13 +99,12 @@ class ConsistencyChecker(object):
         order = atom.get_total_bond_order()
 
         theoretical = valence - order - atom.radical_electrons - 2 * atom.lone_pairs
-
-            if atom.charge != theoretical:
-                raise InvalidAdjacencyListError(
-                    ('Invalid valency for atom {symbol} ({type}) with {radicals} unpaired electrons, '
-                    '{lonePairs} pairs of electrons, {charge} charge, and bonds [{bonds}].'
-                    ).format(symbol=atom.symbol,
-                             type=getAtomType(atom, atom.edges).label,
+        if atom.charge != theoretical:
+            raise InvalidAdjacencyListError(
+                ('Invalid valency for atom {symbol} ({type}) with {radicals} unpaired electrons, '
+                 '{lonePairs} pairs of electrons, {charge} charge, and bonds [{bonds}].'
+                 ).format(symbol=atom.symbol,
+                          type=getAtomType(atom, atom.edges).label,
                              radicals=atom.radicalElectrons,
                              lonePairs=atom.lonePairs,
                              charge=atom.charge,
@@ -871,7 +870,6 @@ def from_adjacency_list(adjlist, group=False, saturate_h=False, check_consistenc
             if isinstance(atom, Atom):
                 ConsistencyChecker.check_partial_charge(atom)
 
-<<<<<<< HEAD
         n_rad = sum([atom.radical_electrons for atom in atoms])
         absolute_spin_per_electron = 1 / 2.
         if multiplicity is None:
@@ -889,18 +887,6 @@ def from_adjacency_list(adjlist, group=False, saturate_h=False, check_consistenc
                 multiplicity = n_rad + 1
 
         return atoms, multiplicity, metal, facet
-=======
-        nRad = sum([atom.radicalElectrons for atom in atoms])
-        absolute_spin_per_electron = 1/2.
-        if multiplicity == None: multiplicity = 2* (nRad * absolute_spin_per_electron) + 1
-            
-        ConsistencyChecker.check_multiplicity(nRad, multiplicity)
-        for atom in atoms: ConsistencyChecker.check_hund_rule(atom, multiplicity)
-        return atoms, multiplicity
-    else:
-        # Currently no group consistency check
-        return atoms, multiplicity
->>>>>>> ea01d9194 (Fixed adjlist error)
 
 
 
