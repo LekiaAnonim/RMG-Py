@@ -2132,9 +2132,9 @@ multiplicity 2
 32 H u0 p0 c0 {16,S}
 """)
         perylene2 = Molecule().from_smiles('c1cc2cccc3c4cccc5cccc(c(c1)c23)c54')
-        self.assertTrue(perylene.is_isomorphic(perylene2, strict=False)) # doesn't actually check you can make aromatic form from SMILES
+        assert perylene.is_isomorphic(perylene2, strict=False)  # doesn't actually check you can make aromatic form from SMILES
         perylene3 = perylene2.generate_resonance_structures()[0]
-        self.assertTrue(perylene.is_isomorphic(perylene3, strict=True))
+        assert perylene.is_isomorphic(perylene3, strict=True)
 
     def test_surface_molecules(self):
         """
