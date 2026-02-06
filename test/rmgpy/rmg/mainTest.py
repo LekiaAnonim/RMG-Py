@@ -175,21 +175,36 @@ class TestMain:
             Rmem.generate_cond()
             Rmem.get_cond()
 
-    def test_make_cantera_input_file(self):
+    def test_make_cantera_input_file_from_ck(self):
         """
-        This tests to ensure that a usable Cantera input file is created.
+        This tests to ensure that a usable Cantera input file is created via the Chemkin to Cantera conversion.
         """
         import cantera as ct
 
-        outName = os.path.join(self.rmg.output_directory, "cantera")
-        files = os.listdir(outName)
+        cantera_files = os.path.join(self.rmg.output_directory, "cantera_from_ck")
+        files = os.listdir(cantera_files)
         for f in files:
             if ".yaml" in f:
                 try:
-                    ct.Solution(os.path.join(outName, f))
+                    ct.Solution(os.path.join(cantera_files, f))
                 except:
                     assert False, "The output Cantera file is not loadable in Cantera."
     
+    def test_make_cantera_input_file_directly(self):
+        """
+        This tests to ensure that a usable Cantera input file is created via direct yaml writer.
+        """
+        import cantera as ct
+
+        cantera_files = os.path.join(self.rmg.output_directory, "cantera")
+        files = os.listdir(cantera_files)
+        for f in files:
+            if ".yaml" in f:
+                try:
+                    ct.Solution(os.path.join(cantera_files, f))
+                except:
+                    assert False, "The output Cantera file is not loadable in Cantera."
+
     def test_cantera_input_files_match_chemkin(self):
         """
         Test that the Cantera YAML files generated directly by RMG match
@@ -229,11 +244,9 @@ class TestMain:
             f"Chemkin-converted YAML file {ck_yaml_file} not found"
 
         # Compare the two yaml files
-        yaml_files = {
-            'yaml1': [cantera_dir, rmg_yaml_file],
-            'yaml2': [cantera_from_ck_dir, ck_yaml_file]
-        }
-        compare = CompareYaml(yaml_files)
+        yaml_path_1 = os.path.join(cantera_dir, rmg_yaml_file)
+        yaml_path_2 = os.path.join(cantera_from_ck_dir, ck_yaml_file)
+        compare = CompareYaml(yaml_path_1, yaml_path_2)
 
         # Check species count matches
         assert compare.compare_species_count(), (
