@@ -250,7 +250,7 @@ class TestMain:
         # copy it to test/rmgpy/test_data/yaml_writer_data/chemkin/
         # so that it can be used in the yaml_writer tests as well
         test_data_chemkin_dir = os.path.join(self.testDir, '..', 'yaml_writer_data', 'chemkin')
-        shutil.copy(ck_yaml_path, test_data_chemkin_dir)
+        shutil.copy(ck_yaml_path, os.path.join(test_data_chemkin_dir, rmg_yaml_file)) # rename it to match the RMG-generated file for easier comparison in yaml_writer tests
 
 
         # Compare the two yaml files
