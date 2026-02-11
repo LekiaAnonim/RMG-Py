@@ -1,0 +1,11 @@
+Error: Trying to step from time 0.0 to 1e-12 resulted in a solver (DASPK) error: DASSL returned with an IDID = -12, DDASSL failed to compute the initial Y and YPRIME vectors.  This could happen because the initial  approximation to Y or YPRIME was not very good, or because no consistent values of these vectors exist. The problem could also be caused by an inaccurate or singular iteration matrix, or a poor preconditioner.
+Error: Model Resurrection has failed
+Error: Core species names: ['ethane(1)', 'C(3)', 'CH3(4)', 'C2H5(5)', 'H(6)', 'C2H4(8)', 'H2(12)', 'C2H3(13)', 'C3H7(14)', 'C2H2(18)', 'C4H7(22)', 'C3H5(25)', 'C4H7(50)']
+Error: Core species moles: array([1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.])
+Error: Volume: 0.11224537199999998
+Error: Core species net rates: array([-2.06208680e+03, -4.00720615e-10,  4.10107790e+03,  1.15478503e+01,
+        1.15478503e+01, -6.07030832e-11, -1.08185363e-10,  0.00000000e+00,
+        0.00000000e+00,  0.00000000e+00,  0.00000000e+00,  0.00000000e+00,
+        0.00000000e+00])
+Error: Edge species net rates: array([], dtype=float64)
+Error: Network leak rates: array([], dtype=float64)

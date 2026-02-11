@@ -1,0 +1,164 @@
+generator: ck2yaml
+input-files: [chem-gas.inp, chem-surface.inp]
+cantera-version: 2.6.0
+date: Tue, 10 Feb 2026 18:27:05 -0500
+
+units: {length: cm, time: s, quantity: mol, activation-energy: 
+    kcal/mol}
+
+phases:
+- name: gas
+  thermo: ideal-gas
+  elements: [H, C, O, N, Ar, H, C, O, Ar, X]
+  species: [Ar, N2, ethane, CH3, CH4, O2]
+  kinetics: gas
+  reactions:
+  - gas-reactions
+  state: {T: 300.0, P: 1 atm}
+- name: surface1
+  thermo: ideal-surface
+  adjacent-phases: [gas]
+  elements: [H, C, O, N, Ar, H, C, O, Ar, X]
+  species: [X, HX, OX, CH4X, CH2OX2, CHOX3]
+  site-density: 2.483e-09
+  kinetics: surface
+  reactions:
+  - surface1-reactions
+  state: {T: 300.0, P: 1 atm}
+
+elements:
+- symbol: X
+  atomic-weight: 195.083
+
+species:
+- name: Ar
+  composition: {Ar: 1}
+  thermo:
+    model: NASA7
+    temperature-ranges: [200.0, 6000.0]
+    data:
+    - [2.5, 0.0, 0.0, 0.0, 0.0, -745.375, 4.37967]
+- name: N2
+  composition: {N: 2}
+  thermo:
+    model: NASA7
+    temperature-ranges: [200.0, 1000.0, 6000.0]
+    data:
+    - [3.53101, -1.23661e-04, -5.02999e-07, 2.43531e-09, -1.40881e-12, 
+        -1046.98, 2.96747]
+    - [2.95258, 1.3969e-03, -4.92632e-07, 7.8601e-11, -4.60755e-15, 
+        -923.949, 5.87189]
+- name: ethane
+  composition: {C: 2, H: 6}
+  thermo:
+    model: NASA7
+    temperature-ranges: [100.0, 954.51, 5000.0]
+    data:
+    - [3.78034578, -3.24276131e-03, 5.52385395e-05, -6.38587729e-08, 
+        2.2863999e-11, -1.16203414e+04, 5.21029728]
+    - [4.58979542, 0.0141508364, -4.75965787e-06, 8.60302924e-10, 
+        -6.21723861e-14, -1.27217507e+04, -3.61718979]
+- name: CH3
+  composition: {C: 1, H: 3}
+  thermo:
+    model: NASA7
+    temperature-ranges: [100.0, 1337.62, 5000.0]
+    data:
+    - [3.91546905, 1.84152818e-03, 3.48746163e-06, -3.32752224e-09, 
+        8.49972445e-13, 1.62856393e+04, 0.351736167]
+    - [3.5414364, 4.76790043e-03, -1.8215013e-06, 3.28880372e-10, 
+        -2.22548587e-14, 1.62239681e+04, 1.660471]
+- name: CH4
+  composition: {C: 1, H: 4}
+  thermo:
+    model: NASA7
+    temperature-ranges: [100.0, 1084.12, 5000.0]
+    data:
+    - [4.20541679, -5.35559144e-03, 2.51123865e-05, -2.13763581e-08, 
+        5.97526898e-12, -1.01619434e+04, -0.921284857]
+    - [0.908256809, 0.0114541005, -4.57174656e-06, 8.29193594e-10, 
+        -5.6631647e-14, -9719.97053, 13.9931449]
+- name: O2
+  composition: {O: 2}
+  thermo:
+    model: NASA7
+    temperature-ranges: [100.0, 1074.56, 5000.0]
+    data:
+    - [3.53732118, -1.21570202e-03, 5.31615358e-06, -4.89440364e-09, 
+        1.45843807e-12, -1038.58843, 4.68368633]
+    - [3.15382774, 1.67803224e-03, -7.69967755e-07, 1.51273954e-10, 
+        -1.08781177e-14, -1040.82031, 6.16751905]
+- name: X
+  composition: {X: 1}
+  thermo:
+    model: NASA7
+    temperature-ranges: [100.0, 1554.8, 5000.0]
+    data:
+    - [7.10139498e-03, -4.25619522e-05, 8.98533016e-08, 
+        -7.80193649e-11, 2.32465471e-14, -0.876101712, -0.0311211229]
+    - [0.1602999, -2.52235409e-04, 1.14181275e-07, -1.21471653e-11, 
+        3.85790025e-16, -70.8100885, -0.90952753]
+- name: HX
+  composition: {H: 1, X: 1}
+  thermo:
+    model: NASA7
+    temperature-ranges: [100.0, 952.91, 5000.0]
+    data:
+    - [-0.380965452, 5.47228709e-03, 2.60912778e-06, -9.6496198e-09, 
+        4.63946753e-12, -1405.61079, 1.0172555]
+    - [2.80339655, -5.41047017e-04, 4.99507978e-07, -7.54963647e-11, 
+        3.06772366e-15, -2346.36021, -15.9436787]
+- name: OX
+  composition: {O: 1, X: 1}
+  thermo:
+    model: NASA7
+    temperature-ranges: [298.0, 1000.0, 2000.0]
+    data:
+    - [-0.294475701, 0.0144162624, -2.61322704e-05, 2.19005957e-08, 
+        -6.9801942e-12, -1.64619234e+04, -0.199445623]
+    - [2.90244691, -3.38584457e-04, 6.43372619e-07, -3.6632666e-10, 
+        6.90093884e-14, -1.70497471e+04, -15.2559728]
+- name: CH4X
+  composition: {C: 1, H: 4, X: 1}
+  thermo:
+    model: NASA7
+    temperature-ranges: [298.0, 1000.0, 2000.0]
+    data:
+    - [4.85496247, -5.54134984e-03, 3.01198105e-05, -2.99225917e-08, 
+        1.00502514e-11, -1.17096278e+04, -9.25620913]
+    - [9.54139378, -0.0104025134, 1.837774e-05, -9.6676513e-09, 
+        1.71211379e-12, -1.34475614e+04, -35.5638434]
+- name: CH2OX2
+  composition: {C: 1, H: 2, O: 1, X: 2}
+  thermo:
+    model: NASA7
+    temperature-ranges: [100.0, 777.56, 5000.0]
+    data:
+    - [-1.44645549, 0.0342803139, -5.09483795e-05, 4.03732306e-08, 
+        -1.27356452e-11, -1.75584787e+04, 6.09156343]
+    - [3.18259452, 0.0104657053, -5.00464545e-06, 9.79545329e-10, 
+        -6.90993489e-14, -1.82783093e+04, -15.0760119]
+  sites: 2.0
+- name: CHOX3
+  composition: {C: 1, H: 1, O: 1, X: 3}
+  thermo:
+    model: NASA7
+    temperature-ranges: [100.0, 689.33, 5000.0]
+    data:
+    - [-1.3271678, 0.0317587333, -5.05065871e-05, 3.95520303e-08, 
+        -1.17505741e-11, -1.46027731e+04, 3.92679635]
+    - [3.47343833, 7.03348332e-03, -3.51779073e-06, 6.98047945e-10, 
+        -4.93382204e-14, -1.53390119e+04, -17.9870016]
+  sites: 3.0
+
+gas-reactions:
+- equation: CH3 + CH3 <=> ethane  # Reaction 1
+  rate-constant: {A: 8.26e+17, b: -1.4, Ea: 1.0}
+
+surface1-reactions:
+- equation: X + X + CH2OX2 <=> HX + CHOX3  # Reaction 1
+  rate-constant: {A: 7.42e+21, b: 0.0, Ea: 3.058}
+- equation: X + CH4 <=> CH4X  # Reaction 2
+  sticking-coefficient: {A: 8.0e-03, b: 0.0, Ea: 0.0}
+- equation: OX + OX <=> X + X + O2  # Reaction 3
+  rate-constant: {A: 3.7e+21, b: 0.0, Ea: 66.611}

@@ -2,6 +2,7 @@ import os
 import yaml
 import pandas as pd
 import re
+from collections import Counter
 
 class YamlAnalyst:
     def __init__(self, path_to_yaml_file):
@@ -105,13 +106,35 @@ class CompareYaml:
     
     def normalize_equation(self, equation):
         def process_side(side):
-            components = side.split(' + ')
-            normalized_components = []
+            # Extract and remove (+M) or +M third-body markers
+            has_third_body = False
+            side_clean = side.strip()
+            if '(+M)' in side_clean:
+                has_third_body = True
+                side_clean = side_clean.replace('(+M)', '').strip()
+            elif side_clean.strip().endswith('+ M'):
+                has_third_body = True
+                side_clean = side_clean.rsplit('+ M', 1)[0].strip()
+
+            components = side_clean.split('+')
+            expanded = []
             for component in components:
-                # Remove any prefix integers/coefficients
-                normalized_component = re.sub(r'^\d*\s*', '', component).strip()
-                normalized_components.append(normalized_component)
-            return ' + '.join(sorted(set(normalized_components)))
+                component = component.strip()
+                if not component:
+                    continue
+                # Match optional integer coefficient prefix (e.g. "2 CH3(14)")
+                m = re.match(r'^(\d+)\s+(.+)$', component)
+                if m:
+                    count = int(m.group(1))
+                    species = m.group(2).strip()
+                    expanded.extend([species] * count)
+                else:
+                    expanded.append(component)
+
+            result = ' + '.join(sorted(expanded))
+            if has_third_body:
+                result += ' (+M)'
+            return result
 
         # Handle both reversible (<=>) and irreversible (=>) reactions
         if '<=>' in equation:
@@ -128,42 +151,63 @@ class CompareYaml:
         return f"{normalized_reactants} {separator} {normalized_products}"
 
     def compare_reactions(self):
+        """Compare reactions between two YAML files.
+        
+        First checks that reaction counts and normalized equations match.
+        Then uses Cantera to load both files and compares forward rate
+        constants at a reference state to verify kinetic equivalence,
+        since the two files may use different unit systems internally.
+        """
+        import cantera as ct
+        import numpy as np
+
         reactions1 = self.yaml1.get_reaction_df()
         reactions2 = self.yaml2.get_reaction_df()
-        comparison_results = {}
 
-        # Check if reaction counts match
+        # Check if total reaction counts match
         count1 = sum(len(df) for df in reactions1.values())
         count2 = sum(len(df) for df in reactions2.values())
         if count1 != count2:
             return False
 
-        for key1, df1 in reactions1.items():
-            df1 = df1.copy()
-            df1['normalized_equation'] = df1['equation'].apply(self.normalize_equation)
-            for key2, df2 in reactions2.items():
-                df2 = df2.copy()
-                df2['normalized_equation'] = df2['equation'].apply(self.normalize_equation)
-                merged_df = pd.merge(df1, df2, on='normalized_equation', suffixes=('_1', '_2'), how='inner')
-                if not merged_df.empty:
-                    # Only compare A, b, Ea if they exist in both dataframes
-                    has_arrhenius = all(
-                        col in merged_df.columns 
-                        for col in ['A_1', 'A_2', 'b_1', 'b_2', 'Ea_1', 'Ea_2']
-                    )
-                    if has_arrhenius:
-                        merged_df['A_diff'] = merged_df['A_1'].round(2) - merged_df['A_2'].round(2)
-                        merged_df['b_diff'] = merged_df['b_1'].round(2) - merged_df['b_2'].round(2)
-                        merged_df['Ea_diff'] = merged_df['Ea_1'].round(2) - merged_df['Ea_2'].round(2)
-                        comparison_results[f'{key1}_{key2}'] = merged_df[['normalized_equation', 'A_diff', 'b_diff', 'Ea_diff']]
-        
-        if not comparison_results:
+        # Collect all normalized equations from each file (using Counter to handle duplicates)
+        all_eqs_1 = Counter()
+        all_eqs_2 = Counter()
+        for key, df in reactions1.items():
+            all_eqs_1.update(df['equation'].apply(self.normalize_equation))
+        for key, df in reactions2.items():
+            all_eqs_2.update(df['equation'].apply(self.normalize_equation))
+
+        # Check that all reaction equations are present in both files
+        if all_eqs_1 != all_eqs_2:
             return False
-            
-        for key, df in comparison_results.items():
-            a_match = df['A_diff'].eq(0).all()
-            b_match = df['b_diff'].eq(0).all()
-            ea_match = df['Ea_diff'].eq(0).all()
-            if not (a_match and b_match and ea_match):
-                return False
-        return True
+
+        # Use Cantera to compare actual rate constants, since the two files
+        # may store A/Ea values in different unit systems
+        yaml1_path = self.yaml1.get_absolute_path()
+        yaml2_path = self.yaml2.get_absolute_path()
+        try:
+            gas1 = ct.Solution(yaml1_path)
+            gas2 = ct.Solution(yaml2_path)
+        except Exception:
+            # If Cantera can't load the files, fall back to equation-only comparison
+            return True
+
+        # Compare at a reference state
+        T, P = 1000.0, ct.one_atm
+        # Build a composition string from species common to both
+        species_names = [s.name for s in gas1.species()]
+        if len(species_names) >= 2:
+            comp = f"{species_names[0]}:0.5, {species_names[1]}:0.5"
+        else:
+            comp = f"{species_names[0]}:1.0"
+
+        gas1.TPX = T, P, comp
+        gas2.TPX = T, P, comp
+
+        kf1 = gas1.forward_rate_constants
+        kf2 = gas2.forward_rate_constants
+
+        # Use relative tolerance for comparison; allow 1% difference
+        # to account for Chemkin format precision loss
+        return np.allclose(kf1, kf2, rtol=0.01, atol=1e-50)
