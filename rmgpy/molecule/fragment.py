@@ -555,6 +555,7 @@ class Fragment(Molecule):
             self.multiplicity,
             self.site,
             self.morphology,
+            _,  # molecular_term_symbol not used by Fragment
         ) = from_adjacency_list(adjlist, group=False, saturate_h=saturate_h)
         self.update_atomtypes(raise_exception=raise_atomtype_exception)
 

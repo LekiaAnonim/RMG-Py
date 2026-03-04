@@ -440,9 +440,9 @@ def from_old_adjacency_list(adjlist, group=False, saturate_h=False):
         logging.error("Troublesome adjacency list:\n" + adjlist)
         raise
     if group:
-        return atoms, multiplicity, [], []
+        return atoms, multiplicity, [], [], []
     else:
-        return atoms, multiplicity, '', ''
+        return atoms, multiplicity, '', '', ''
 
 
 ###############################
@@ -472,6 +472,7 @@ def from_adjacency_list(adjlist, group=False, saturate_h=False, check_consistenc
     atom_dict = {}
     bonds = {}
     multiplicity = None
+    molecular_term_symbol = ''
 
     adjlist = adjlist.strip()
     lines = adjlist.splitlines()
@@ -595,6 +596,26 @@ def from_adjacency_list(adjlist, group=False, saturate_h=False, check_consistenc
                                                 "'facet 111'".format(line))
                 facet = line.split()[1].strip()
             
+            continue
+        
+        if line.split()[0] == 'molecularTermSymbol':
+            if group:
+                match = re.match(r'\s*molecularTermSymbol\s+\[\s*[\w^+\-,\s]+\s*\]\s*$', line)
+                if not match:
+                    rematch = re.match(r'\s*molecularTermSymbol\s+x\s*$', line)
+                    if not rematch:
+                        raise InvalidAdjacencyListError("Invalid molecularTermSymbol line '{0}'. Should be a list like "
+                                                        "'molecularTermSymbol [A^2S+,X^3P]' or a wildcard 'molecularTermSymbol x'".format(line))
+                else:
+                    out = line.split('[')[1][:-1]
+                    molecular_term_symbol = [x.strip() for x in out.split(',') if x.strip() != '']
+        
+            else:
+                match = re.match(r'\s*molecularTermSymbol\s+\S+\s*$', line)
+                if not match:
+                    raise InvalidAdjacencyListError("Invalid molecularTermSymbol line '{0}'. Should be a string like "
+                                                "'molecularTermSymbol A^2S+'".format(line))
+                molecular_term_symbol = line.split()[1]
             continue
         
         # First item is index for atom
@@ -872,7 +893,7 @@ def from_adjacency_list(adjlist, group=False, saturate_h=False, check_consistenc
         ConsistencyChecker.check_multiplicity(n_rad, multiplicity)
         for atom in atoms:
             ConsistencyChecker.check_hund_rule(atom, multiplicity)
-        return atoms, multiplicity, metal, facet
+        return atoms, multiplicity, metal, facet, molecular_term_symbol
     else:
         # Currently no group consistency check
         if not group:
@@ -880,11 +901,16 @@ def from_adjacency_list(adjlist, group=False, saturate_h=False, check_consistenc
                 n_rad = sum([atom.radical_electrons for atom in atoms])
                 multiplicity = n_rad + 1
 
-        return atoms, multiplicity, metal, facet
+        # Ensure group attributes are lists
+        if group:
+            if isinstance(molecular_term_symbol, str):
+                molecular_term_symbol = [molecular_term_symbol] if molecular_term_symbol else []
+
+        return atoms, multiplicity, metal, facet, molecular_term_symbol
 
 
 
-def to_adjacency_list(atoms, multiplicity, metal='', facet='', label=None, group=False, remove_h=False, remove_lone_pairs=False,
+def to_adjacency_list(atoms, multiplicity, metal='', facet='', molecular_term_symbol='', label=None, group=False, remove_h=False, remove_lone_pairs=False,
                       old_style=False):
     """
     Convert a chemical graph defined by a list of `atoms` into a string
@@ -915,6 +941,8 @@ def to_adjacency_list(atoms, multiplicity, metal='', facet='', label=None, group
             adjlist += 'metal [{0!s}]\n'.format(','.join(i for i in metal))
         if facet:
             adjlist += 'facet [{0!s}]\n'.format(','.join(i for i in facet))
+        if molecular_term_symbol:
+            adjlist += 'molecularTermSymbol [{0!s}]\n'.format(','.join(str(i) for i in molecular_term_symbol))
     else:
         assert isinstance(multiplicity, int), "Molecule should have an integer multiplicity"
         if multiplicity != 1 or any(atom.radical_electrons for atom in atoms):
@@ -923,6 +951,8 @@ def to_adjacency_list(atoms, multiplicity, metal='', facet='', label=None, group
             adjlist += f"metal {metal}\n"
         if facet:
             adjlist += f"facet {facet}\n"
+        if molecular_term_symbol and (molecular_term_symbol != ''):
+            adjlist += 'molecularTermSymbol {0!s}\n'.format(molecular_term_symbol)
 
     # Determine the numbers to use for each atom
     atom_numbers = {}

@@ -160,6 +160,7 @@ cdef class Molecule(Graph):
     cdef public dict props
     cdef public str metal
     cdef public str facet
+    cdef public str molecular_term_symbol
     cdef str _fingerprint
     cdef str _inchi
     cdef str _smiles

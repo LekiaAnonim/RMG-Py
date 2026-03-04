@@ -141,6 +141,7 @@ cdef class Group(Graph):
     cdef public list multiplicity
     cdef public list metal 
     cdef public list facet
+    cdef public list molecular_term_symbol
     # These read-only attribues act as a "fingerprint" for accelerating
     # subgraph isomorphism checks
     cdef public dict elementCount

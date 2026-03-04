@@ -1280,17 +1280,19 @@ class Group(Graph):
     `props`             ``dict``            Dictionary of arbitrary properties/flags classifying state of Group object
     `metal`             ``list``            List of metals accepted for the group
     `facet`             ``list``            List of facets accepted for the group
+    `molecular_term_symbol` ``list``        List of molecular term symbols accepted for the group
     =================== =================== ====================================
 
     Corresponding alias methods to Molecule have also been provided.
     """
 
-    def __init__(self, atoms=None, props=None, multiplicity=None, metal=None, facet=None):
+    def __init__(self, atoms=None, props=None, multiplicity=None, metal=None, facet=None, molecular_term_symbol=None):
         Graph.__init__(self, atoms)
         self.props = props or {}
         self.multiplicity = multiplicity or []
         self.metal = metal or []
         self.facet = facet or []
+        self.molecular_term_symbol = molecular_term_symbol or []
         self.elementCount = {}
         self.radicalCount = -1
         self.update()
@@ -2038,7 +2040,7 @@ class Group(Graph):
         ``False``.
         """
         from rmgpy.molecule.adjlist import from_adjacency_list
-        self.vertices, multiplicity, self.metal, self.facet = from_adjacency_list(adjlist, group=True, check_consistency=check_consistency)
+        self.vertices, multiplicity, self.metal, self.facet, self.molecular_term_symbol = from_adjacency_list(adjlist, group=True, check_consistency=check_consistency)
         if multiplicity is not None:
             self.multiplicity = multiplicity
         self.update()
@@ -2049,7 +2051,7 @@ class Group(Graph):
         Convert the molecular structure to a string adjacency list.
         """
         from rmgpy.molecule.adjlist import to_adjacency_list
-        return to_adjacency_list(self.vertices, multiplicity=self.multiplicity, metal=self.metal, facet=self.facet, label=label, group=True)
+        return to_adjacency_list(self.vertices, multiplicity=self.multiplicity, metal=self.metal, facet=self.facet, molecular_term_symbol=self.molecular_term_symbol, label=label, group=True)
 
     def update_fingerprint(self):
         """

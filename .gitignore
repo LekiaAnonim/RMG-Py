@@ -132,3 +132,8 @@ examples/**/output*.html
 examples/**/restart_from_seed.py
 examples/**/seed/filters
 examples/**/statistics.xls
+vote_integration_example.py
+test_votes_export.json
+test_hybrid_votes.db
+test_votes.db
+test_voting_system.py
