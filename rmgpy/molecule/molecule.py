@@ -1027,6 +1027,7 @@ class Molecule(Graph):
     `fingerprint`           ``str``     A representation for fast comparison, set as molecular formula
     `metal`                 ``str``     The metal of the metal surface the molecule is associated with
     `facet`                 ``str``     The facet of the metal surface the molecule is associated with
+    `molecular_term_symbol` ``str``     The molecular term symbol for excited electronic states
     ======================= =========== ========================================
 
     A new molecule object can be easily instantiated by passing the `smiles` or
@@ -1034,10 +1035,11 @@ class Molecule(Graph):
     """
 
     def __init__(self, atoms=None, symmetry=-1, multiplicity=-187, reactive=True, props=None, inchi='', smiles='', 
-                 metal='', facet=''):
+                 metal='', facet='', molecular_term_symbol=''):
         Graph.__init__(self, atoms)
         self.symmetry_number = symmetry
         self.multiplicity = multiplicity
+        # self.molecularTermSymbol = molecular_term_symbol
         self.reactive = reactive
         self._fingerprint = None
         self._inchi = None
@@ -1047,6 +1049,7 @@ class Molecule(Graph):
         self.facet = facet
         self._sssr = None
         self._symm_sssr = None
+        self.molecular_term_symbol = molecular_term_symbol
 
         if inchi and smiles:
             logging.warning('Both InChI and SMILES provided for Molecule instantiation, '
@@ -1672,7 +1675,7 @@ class Molecule(Graph):
         mapping from `self` to `other` (i.e. the atoms of `self` are the keys,
         while the atoms of `other` are the values). The `other` parameter must
         be a :class:`Molecule` object, or a :class:`TypeError` is raised.
-        Also ensures multiplicities are also equal.
+        Also ensures multiplicities and molecularTermSymbol are also equal.
 
         Args:
             initial_map (dict, optional):          initial atom mapping to use
@@ -1698,6 +1701,9 @@ class Molecule(Graph):
             return False 
         #check facet
         if self.facet != other.facet:
+            return False
+        #check molecular_term_symbol
+        if self.molecular_term_symbol != other.molecular_term_symbol:
             return False
         # if given an initial map, ensure that it's valid.
         if initial_map:
@@ -1948,7 +1954,7 @@ class Molecule(Graph):
         """
         from rmgpy.molecule.adjlist import from_adjacency_list
 
-        self.vertices, self.multiplicity, self.metal, self.facet = from_adjacency_list(adjlist, group=False, saturate_h=saturate_h,
+        self.vertices, self.multiplicity, self.metal, self.facet, self.molecular_term_symbol = from_adjacency_list(adjlist, group=False, saturate_h=saturate_h,
                                                                check_consistency=check_consistency)
         self.update_atomtypes(raise_exception=raise_atomtype_exception)
 
@@ -2123,7 +2129,7 @@ class Molecule(Graph):
         """
         from rmgpy.molecule.adjlist import to_adjacency_list
         result = to_adjacency_list(self.vertices, self.multiplicity, metal=self.metal, facet=self.facet, 
-                                   label=label, group=False, remove_h=remove_h,
+                                   molecular_term_symbol=self.molecular_term_symbol, label=label, group=False, remove_h=remove_h,
                                    remove_lone_pairs=remove_lone_pairs, old_style=old_style)
         return result
 
