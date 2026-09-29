@@ -872,11 +872,18 @@ class VoteLocalDB:
                                notes: str = ""):
         """
         Save an identified species, preserving is_processed status if already set.
-        
+
         IMPORTANT: This method preserves the is_processed and processed_at columns
         when updating an existing record. This is critical for restart optimization -
         if a species was already processed (limit_enlarge completed), we must not
         reset that flag when the importer restarts and re-saves the identified species.
+
+        An existing record also keeps its rmg_species_label, identification_method,
+        identified_by and notes. A species is never re-identified within a run, so an
+        existing record is only re-saved when the importer restarts and rebuilds the
+        match from the Chemkin species - at which point the label is just the Chemkin
+        label and the method is unknown. Only the fields belonging to the rebuilt RMG
+        model (index, SMILES, formula, enthalpy) are refreshed.
         """
         cursor = self.conn.cursor()
         
@@ -909,19 +916,17 @@ class VoteLocalDB:
         existing = cursor.fetchone()
         
         if existing:
-            # UPDATE existing record, preserving is_processed and processed_at
+            # UPDATE only the rebuilt RMG model's fields, preserving is_processed,
+            # processed_at and the original label/method/identified_by/notes
             cursor.execute("""
-                UPDATE identified_species 
-                SET chemkin_formula = ?, rmg_species_label = ?, 
-                    rmg_species_smiles = ?, rmg_species_index = ?, 
-                    identification_method = ?, identified_by = ?, 
-                    enthalpy_discrepancy = ?, notes = ?
+                UPDATE identified_species
+                SET chemkin_formula = ?, rmg_species_smiles = ?,
+                    rmg_species_index = ?,
+                    enthalpy_discrepancy = COALESCE(?, enthalpy_discrepancy)
                 WHERE job_id = ? AND chemkin_label = ?
             """, (
-                chemkin_formula, rmg_species_label,
-                rmg_species_smiles, rmg_species_index, identification_method,
-                identified_by, enthalpy_discrepancy, notes,
-                job_id, chemkin_label
+                chemkin_formula, rmg_species_smiles, rmg_species_index,
+                enthalpy_discrepancy, job_id, chemkin_label
             ))
             self.logger.debug(f"Updated identified species (preserved is_processed={existing['is_processed']}): {chemkin_label}")
         else:
