@@ -3261,6 +3261,49 @@ class ModelMatcher():
         #images_path = 'file://'+os.path.abspath(os.path.join(self.args.output_directory,'species')) # to get from disk
         return "<img src='{path}/{file!s}.png' title='{title}'>".format(file=urllib.parse.quote(str(species)), path=images_path, title=str(species))
 
+    def _find_rmg_species_by_name(self, name):
+        """
+        Find the core or edge RMG species whose str() is `name` (e.g. 'C3H3(12)'),
+        or return None. Uses an index-number lookup that is rebuilt on a miss,
+        since the edge grows as reactions are generated.
+        """
+        match = re.search(r'\((\d+)\)$', name)
+        if not match:
+            return None
+        index = int(match.group(1))
+        lookup = getattr(self, '_species_by_index', {})
+        species = lookup.get(index)
+        if species is None:
+            rm = self.rmg_object.reaction_model
+            lookup = {s.index: s for s in rm.core.species + rm.edge.species}
+            self._species_by_index = lookup
+            species = lookup.get(index)
+        if species is not None and str(species) == name:
+            return species
+        return None
+
+    @cherrypy.expose
+    def img(self, filename):
+        """
+        Serve a species drawing. Checks the 'species' directory, then 'species/MATCHED'
+        (where drawings of identified species are moved), and otherwise draws the
+        species on demand, so that every species in a voting reaction gets a picture.
+        """
+        filename = os.path.basename(filename)
+        species_dir = os.path.join(self.rmg_object.output_directory, 'species')
+        for directory in (species_dir, os.path.join(species_dir, 'MATCHED')):
+            path = os.path.join(directory, filename)
+            if os.path.exists(path):
+                return serve_file(os.path.abspath(path), content_type='image/png')
+        name = filename[:-len('.png')] if filename.endswith('.png') else filename
+        species = self._find_rmg_species_by_name(name)
+        if species is not None:
+            self.draw_species(species)
+            path = os.path.join(species_dir, filename)
+            if os.path.exists(path):
+                return serve_file(os.path.abspath(path), content_type='image/png')
+        raise cherrypy.NotFound()
+
     @cherrypy.expose
     def index(self):
         location = os.path.abspath(self.args.reactions or self.args.species)
@@ -4594,15 +4637,9 @@ def run_cherry_py_server(args):
         'log.screen': False
     })
 
-    conf = {
-        '/img': {
-            'tools.staticdir.on': True,
-            'tools.staticdir.dir': os.path.join(args.output_directory,
-                                                'species'),
-        }
-    }
+    # Species images under /img are served (and drawn on demand) by mm.img
     cherrypy.log.access_log.propagate = False
-    cherrypy.quickstart(mm, '/', config=conf)
+    cherrypy.quickstart(mm, '/')
 
 
 if __name__ == '__main__':
