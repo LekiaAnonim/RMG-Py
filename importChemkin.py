@@ -4572,7 +4572,7 @@ td.centered {text-align: center;}
 </div>
 <div style="height: 1em; padding-top: 0.5em;"><br>
 <script language="JavaScript">
-document.write('<a href="//' + window.location.hostname + ':8000/importer/" >Dashboard</a> > ' );
+document.write('<a href="//' + window.location.hostname + '/importer/" >Dashboard</a> > ' );
 </script>
 <a href="./">""" + name + """</a>&nbsp</div>
     """
