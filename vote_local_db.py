@@ -1032,7 +1032,28 @@ class VoteLocalDB:
         labels = [row['chemkin_label'] for row in cursor.fetchall()]
         self.logger.info(f"Loaded {len(labels)} already-processed species for job {job_id}")
         return labels
-    
+
+    def delete_identified_species(self, job_id: str, chemkin_labels: List[str]) -> int:
+        """
+        Delete identified species, e.g. ones removed with "Delete mistakes", so they
+        are not identified again when the job restarts.
+
+        Args:
+            job_id: The import job ID
+            chemkin_labels: The chemkin labels to delete
+
+        Returns:
+            The number of rows deleted
+        """
+        cursor = self.conn.cursor()
+        cursor.executemany("""
+            DELETE FROM identified_species
+            WHERE job_id = ? AND chemkin_label = ?
+        """, [(job_id, label) for label in chemkin_labels])
+        self.conn.commit()
+        self.logger.info(f"Deleted {cursor.rowcount} identified species for job {job_id}")
+        return cursor.rowcount
+
     def get_processing_status(self, job_id: str) -> Dict:
         """
         Get summary of processing status for a job.

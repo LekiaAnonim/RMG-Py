@@ -30,6 +30,7 @@ import numpy as np
 import cherrypy
 from cherrypy.lib.static import serve_file
 import json
+import html
 import threading
 import urllib
 import socket
@@ -66,6 +67,19 @@ database_project_directory = os.path.abspath(os.path.join(database_dictionary, '
 sys.path.insert(0, database_project_directory)
 
 ################################################################################
+
+# What the importer is doing, for the dashboard (see ModelMatcher.write_importer_state)
+IMPORTER_STATE_FILE = 'importer_state.json'
+# Exit code when stopped with the Kill job button, so the dashboard can tell it from a crash
+EXIT_KILLED_FROM_WEB_PAGE = 3
+
+
+def write_json_atomically(path, data):
+    """Write `data` as JSON to `path` so that a reader never sees a half-written file."""
+    temporary_path = '{0}.{1}.tmp'.format(path, threading.get_ident())
+    with open(temporary_path, 'w') as f:
+        json.dump(data, f)
+    os.replace(temporary_path, path)
 
 
 class ReactionPlaceholder:
@@ -220,6 +234,13 @@ def parse_command_line_arguments():
         default=8080,
         help='the port to serve the web interface on')
     parser.add_argument(
+        '--host',
+        default='127.0.0.1',
+        help=("the address the web interface listens on. The default only accepts "
+              "connections from this machine (e.g. through nginx); use 0.0.0.0 when "
+              "it must be reached from another host, such as through an SSH tunnel "
+              "to a cluster node"))
+    parser.add_argument(
         '--quit_when_exhausted',
         action='store_true',
         help=("Don't wait for input from the web front end, "
@@ -367,6 +388,8 @@ class ModelMatcher():
         self.pruned_votes = {}
         self.manual_matches_to_process = []
         """A list of tuples of matches not yet processed: [(chemkin_label, rmg_species),...]"""
+        self.manual_match_lock = threading.Lock()
+        """Held by queue_manual_match, so two web requests can't queue the same label."""
         self.tentative_matches = []
         self.thermo_matches = {}
         self.thermo_libraries_to_check = []
@@ -2099,7 +2122,9 @@ class ModelMatcher():
             if rmg_name is None:
                 del (self.thermo_matches[chemkin_label])
                 return
-            for rmg_species in self.thermo_matches[chemkin_label].keys():
+            # Loop over a copy of the keys: deleting from a dict while iterating over it
+            # raises RuntimeError in Python 3.
+            for rmg_species in list(self.thermo_matches[chemkin_label].keys()):
                 if str(rmg_species) == rmg_name:
                     del (self.thermo_matches[chemkin_label][rmg_species])
             if len(self.thermo_matches[chemkin_label]) == 0:
@@ -2119,7 +2144,8 @@ class ModelMatcher():
             self.blocked_matches[chemkin_label] = dict()
         self.blocked_matches[chemkin_label][rmg_species] = username
 
-        self.votes[chemkin_label].pop(rmg_species, None)
+        # A label can be blocked before it has any votes (e.g. from the thermo matches page)
+        self.votes.get(chemkin_label, {}).pop(rmg_species, None)
 
         # Save to local database
         if self.vote_db_enabled:
@@ -2826,6 +2852,7 @@ class ModelMatcher():
     def main(self):
         """This is the main matcher function that does the whole thing"""
         args = self.args
+        self.write_importer_state('processing')
         species_file = args.species
         reactions_file = args.reactions or species_file
         thermo_file = args.thermo
@@ -2966,24 +2993,21 @@ class ModelMatcher():
         # We want to put inert things in the core first, so we can do PDep calculations with inert colliders.
         self.identified_unprocessed_labels.sort(key=lambda x: new_species_dict[x].reactive)
         reactions_to_check = set()
-        
-        # RESTART OPTIMIZATION: Get list of already-processed species from database
-        # These species already had limit_enlarge() run, so we skip the expensive computation
-        already_processed = getattr(self, 'already_processed_labels', set())
-        if already_processed:
-            logging.info(f"RESTART OPTIMIZATION: {len(already_processed)} species already processed")
-            logging.info(f"  Will skip limit_enlarge() for these species (major speedup!)")
-        
+
+        # On a restart, species processed in an earlier run go straight back into the core.
+        # This must happen before any new species is processed, so new species react with them.
+        self.restore_processed_species_to_core()
+
+        if not self.identified_unprocessed_labels:
+            # Nothing new to process, e.g. every identified species was processed in an
+            # earlier run. Wait for a match from the web front end; the loop below then
+            # processes it like any other species.
+            self.wait_for_manual_matches(reactions_to_check)
+
         while self.identified_unprocessed_labels:
 
             label_to_process = self.identified_unprocessed_labels.pop(0)
-            
-            # RESTART OPTIMIZATION: Skip limit_enlarge() if species was already processed
-            if label_to_process in already_processed:
-                logging.info(f"SKIPPING already-processed species: {label_to_process}")
-                logging.info(f"  (limit_enlarge already completed in previous run)")
-                continue
-            
+
             logging.info("Processing species {0}...".format(label_to_process))
 
             # Add species to RMG core.
@@ -3070,14 +3094,15 @@ class ModelMatcher():
                             label_to_process))
             
             # MARK SPECIES AS PROCESSED in database
-            # This enables restart optimization - on next run, this species will be skipped
+            # On the next run it goes straight back into the core instead of being reacted again
             if self.vote_db_enabled:
                 try:
                     self.vote_db.mark_species_processed(self.job_id, label_to_process)
                     logging.debug(f"Marked {label_to_process} as processed in database")
                 except Exception as e:
                     logging.warning(f"Failed to mark {label_to_process} as processed: {e}")
-            
+            self.write_progress_file()
+
             logging.info("Have now identified {0} of {1} species ({2:.1%}).".format(
                             len(self.identified_labels),
                             len(self.species_list),
@@ -3096,44 +3121,8 @@ class ModelMatcher():
                                os.path.join(self.rmg_object.output_directory, 'identified_chemkin_verbose.txt'),
                                os.path.join(self.rmg_object.output_directory, 'identified_RMG_dictionary.txt'))
 
-            while len(self.identified_unprocessed_labels) == 0:
-                if not self.manual_matches_to_process :
-                    logging.info("Updating exported library files...")
-                    self.save_libraries()
-
-                    if self.args.quit_when_exhausted:
-                        logging.warning("--quit_when_exhausted option detected."
-                                        " Now exiting without waiting for input.")
-                        break
-                    logging.info(("Waiting for input from the web front end..."
-                                 " (port {0})").format(self.args.port))
-                while not self.manual_matches_to_process:
-                    time.sleep(1)
-
-                while self.manual_matches_to_process:
-                    chemkin_label, matching_species = self.manual_matches_to_process.pop(0)
-                    logging.info("There is a manual match to process: {0} is {1!s}".format(
-                                    chemkin_label, matching_species))
-                    if chemkin_label in self.identified_labels:
-                        assert self.species_dict_rmg[chemkin_label] == matching_species, \
-                            "Manual match disagrees with an automatic match!"
-                        continue  # don't match something that's already matched.
-                    self.set_match(chemkin_label, matching_species)
-                    invalidated_reactions = self.get_invalidated_reactions_and_remove_votes(
-                                                        chemkin_label, matching_species)
-                    reactions_to_check.update(invalidated_reactions)
-                    logging.info(("After making that match, "
-                        "will have to re-check {0} edge reactions").format(len(reactions_to_check)))
-
-                #After processing all matches, now is a good time to save reactions.
-                couldnt_save = []
-                while self.chemkin_reactions_to_save:
-                    chemkin_reaction = self.chemkin_reactions_to_save.pop(0)
-                    if self.reagents_are_all_identified(chemkin_reaction, require_molecules=True):
-                        self.add_reaction_to_kinetics_library(chemkin_reaction)
-                    else:
-                        couldnt_save.append(chemkin_reaction)
-                self.chemkin_reactions_to_save = couldnt_save  # try again later!
+            if not self.identified_unprocessed_labels:
+                self.wait_for_manual_matches(reactions_to_check)
 
             terminal_input_enabled = False
             if (len(self.identified_unprocessed_labels) == 0
@@ -3158,79 +3147,6 @@ class ModelMatcher():
                 reactions_to_check.update(invalidated_reactions)
                 logging.info("After making that match, will have to re-check {0} edge reactions".format(len(reactions_to_check)))
 
-        # POST-LOOP WAITING: Handle case where all processed species were skipped
-        # but there are still unidentified species that need user votes
-        unidentified_count = len(self.species_list) - len(self.identified_labels)
-        if unidentified_count > 0 and self.votes:
-            logging.info("\n" + "="*60)
-            logging.info(f"WAITING FOR USER INPUT: {unidentified_count} species still unidentified")
-            logging.info(f"  {len(self.votes)} species have candidate matches needing votes")
-            logging.info(f"  Web interface available at http://0.0.0.0:{self.args.port}")
-            logging.info("="*60)
-            
-            # Draw all candidate species images for the web interface
-            # This is needed because on restart, the main loop's draw_all_candidate_species() may be skipped
-            logging.info("Drawing candidate species images for web interface...")
-            self.draw_all_candidate_species()
-            
-            if not self.args.quit_when_exhausted:
-                self.save_libraries()
-                logging.info("Waiting for input from the web front end... (port {0})".format(self.args.port))
-                
-                # Wait for manual matches from web interface
-                while unidentified_count > 0:
-                    while not self.manual_matches_to_process:
-                        time.sleep(1)
-                    
-                    # Process manual matches
-                    while self.manual_matches_to_process:
-                        chemkin_label, matching_species = self.manual_matches_to_process.pop(0)
-                        logging.info("There is a manual match to process: {0} is {1!s}".format(
-                                        chemkin_label, matching_species))
-                        if chemkin_label in self.identified_labels:
-                            assert self.species_dict_rmg[chemkin_label] == matching_species, \
-                                "Manual match disagrees with an automatic match!"
-                            continue  # don't match something that's already matched.
-                        self.set_match(chemkin_label, matching_species)
-                        
-                        # Add to identified_unprocessed_labels for processing
-                        if chemkin_label not in self.identified_unprocessed_labels:
-                            self.identified_unprocessed_labels.append(chemkin_label)
-                        
-                        invalidated_reactions = self.get_invalidated_reactions_and_remove_votes(
-                                                            chemkin_label, matching_species)
-                        logging.info("After making that match, will have to re-check {0} edge reactions".format(
-                                        len(invalidated_reactions)))
-                    
-                    # Process any newly identified species
-                    while self.identified_unprocessed_labels:
-                        label_to_process = self.identified_unprocessed_labels.pop(0)
-                        if label_to_process in already_processed:
-                            logging.info(f"SKIPPING already-processed species: {label_to_process}")
-                            continue
-                        
-                        logging.info("Processing species {0}...".format(label_to_process))
-                        self.limit_enlarge(self.species_dict_rmg[label_to_process])
-                        
-                        # Mark as processed
-                        if self.vote_db_enabled:
-                            try:
-                                self.vote_db.mark_species_processed(self.job_id, label_to_process)
-                            except Exception as e:
-                                logging.warning(f"Failed to mark {label_to_process} as processed: {e}")
-                        
-                        already_processed.add(label_to_process)
-                    
-                    # Update count and save progress
-                    unidentified_count = len(self.species_list) - len(self.identified_labels)
-                    self.save_votes_to_storage(force=False)
-                    logging.info(f"Progress: {len(self.identified_labels)}/{len(self.species_list)} species identified")
-                    
-                    if unidentified_count > 0:
-                        logging.info(f"Still waiting for votes on {unidentified_count} unidentified species...")
-            else:
-                logging.warning("--quit_when_exhausted option detected. Exiting without waiting for input.")
-
         self.save_reactions_to_storage()
         print("Finished reading")
         counter = 0
@@ -3251,9 +3167,186 @@ class ModelMatcher():
         self.export_votes_to_json()
         self.show_sync_status()
         logging.info("✓ Final votes saved successfully")
+        self.write_progress_file()
+        self.write_importer_state('finished')
 
         if hasattr(self, 'vote_db') and self.vote_db:
             self.vote_db.close()
+
+    def restore_processed_species_to_core(self):
+        """
+        On a restart, put the species processed in an earlier run back in the RMG core.
+
+        Their reactions were generated and checked in that run, and the votes saved,
+        so they are not reacted again. But the core only exists in memory, and
+        limit_enlarge reacts a new species only with species already in the core.
+        Without this, species processed after a restart have nothing to react with,
+        and produce no new reaction matches or votes. Call it before processing any
+        new species.
+        """
+        already_processed = getattr(self, 'already_processed_labels', set())
+        restored = [label for label in self.identified_unprocessed_labels if label in already_processed]
+        if not restored:
+            return
+        rm = self.rmg_object.reaction_model
+        for label in restored:
+            self.identified_unprocessed_labels.remove(label)
+            species = self.species_dict_rmg[label]
+            if species not in rm.core.species:
+                rm.add_species_to_core(species)
+        logging.info("RESTART: put {0} species processed in an earlier run back in the core "
+                     "without generating their reactions again".format(len(restored)))
+
+    def wait_for_manual_matches(self, reactions_to_check):
+        """
+        Wait for matches from the web front end while there are no identified species
+        left to process, and apply them. Applying a match queues the newly identified
+        species for the main loop. Edge reactions whose votes the matches invalidate
+        are added to `reactions_to_check`.
+
+        Returns without waiting once every species is identified, or with
+        --quit_when_exhausted.
+        """
+        while not self.identified_unprocessed_labels:
+            if not self.manual_matches_to_process:
+                self.save_deferred_chemkin_reactions()
+                logging.info("Updating exported library files...")
+                self.save_libraries()
+
+                if len(self.identified_labels) >= len(self.species_list):
+                    logging.info("All species are identified, so not waiting for input.")
+                    return
+                if self.args.quit_when_exhausted:
+                    logging.warning("--quit_when_exhausted option detected."
+                                    " Now exiting without waiting for input.")
+                    return
+                self.write_progress_file()
+                self.write_importer_state('awaiting_input')
+                logging.info(("Waiting for input from the web front end..."
+                             " (port {0})").format(self.args.port))
+            while not self.manual_matches_to_process:
+                time.sleep(1)
+            self.write_importer_state('processing')
+
+            while self.manual_matches_to_process:
+                chemkin_label, matching_species = self.manual_matches_to_process.pop(0)
+                logging.info("There is a manual match to process: {0} is {1!s}".format(
+                                chemkin_label, matching_species))
+                if chemkin_label in self.identified_labels:
+                    # queue_manual_match refuses labels that are already identified or queued,
+                    # but one can slip in while an earlier match for it is being applied.
+                    if self.species_dict_rmg[chemkin_label] is not matching_species:
+                        logging.warning("Ignoring manual match {0} is {1!s}: {0} is already identified "
+                                        "as {2!s}".format(chemkin_label, matching_species,
+                                                         self.species_dict_rmg[chemkin_label]))
+                    continue  # don't match something that's already matched.
+                self.set_match(chemkin_label, matching_species)
+                invalidated_reactions = self.get_invalidated_reactions_and_remove_votes(
+                                                    chemkin_label, matching_species)
+                reactions_to_check.update(invalidated_reactions)
+                logging.info(("After making that match, "
+                    "will have to re-check {0} edge reactions").format(len(reactions_to_check)))
+
+            # After processing all matches, now is a good time to save reactions.
+            self.save_deferred_chemkin_reactions()
+
+    def save_deferred_chemkin_reactions(self):
+        """
+        Add to the kinetics library the fully identified chemkin reactions whose saving
+        was deferred until their species were processed. Reactions that still can't be
+        saved stay in the list, to try again later.
+        """
+        couldnt_save = []
+        while self.chemkin_reactions_to_save:
+            chemkin_reaction = self.chemkin_reactions_to_save.pop(0)
+            if self.reagents_are_all_identified(chemkin_reaction, require_molecules=True):
+                self.add_reaction_to_kinetics_library(chemkin_reaction)
+            else:
+                couldnt_save.append(chemkin_reaction)
+        self.chemkin_reactions_to_save = couldnt_save
+
+    def queue_manual_match(self, chemkin_label, rmg_species):
+        """
+        Queue a match confirmed in the web front end, for the main loop to apply.
+
+        Every confirm handler goes through here, so each label is queued at most once.
+        Returns False, and queues nothing, if the label is already identified or
+        already has a match waiting to be processed.
+        """
+        with self.manual_match_lock:
+            if chemkin_label in self.identified_labels:
+                logging.warning("Not queuing {0} is {1!s}: {0} is already identified".format(
+                    chemkin_label, rmg_species))
+                return False
+            if any(label == chemkin_label for label, _ in self.manual_matches_to_process):
+                logging.warning("Not queuing {0} is {1!s}: a match for {0} is already waiting "
+                                "to be processed".format(chemkin_label, rmg_species))
+                return False
+            self.manual_matches_to_process.append((chemkin_label, rmg_species))
+            return True
+
+    def write_progress_file(self):
+        """
+        Count the identification progress, write it to progress.json in the model's
+        folder (where the dashboard reads it), and save it to the vote database.
+        Called from the main loop and from the progress.json page.
+        Returns the counts as a dict.
+        """
+        if self.species_list is None:
+            return {}  # still loading the input files
+        total = len(self.species_list)
+        identified = len(self.identified_labels) + len(self.manual_matches_to_process)
+        unprocessed = len(self.identified_unprocessed_labels) + len(self.manual_matches_to_process)
+        tentative = len(self.tentative_matches)
+        unmatchedreactions = len(self.chemkin_reactions_unmatched)
+        totalreactions = len(self.chemkin_reactions)
+        thermomatches = len(self.thermo_matches)
+        answer = {
+            'processed': identified - unprocessed,
+            'unprocessed': unprocessed,
+            'confirmed': identified,
+            'tentative': tentative,
+            'unidentified': total - identified - tentative,
+            'unconfirmed': total - identified,
+            'total': total,
+            'unmatchedreactions': unmatchedreactions,
+            'totalreactions': totalreactions,
+            'thermomatches': thermomatches,
+        }
+
+        progress_file = os.path.join(self.args.output_directory, '..', 'progress.json')
+        try:
+            write_json_atomically(progress_file, answer)
+        except Exception as e:
+            logging.debug(f"Could not write progress.json to disk: {e}")
+
+        # Persist progress to vote database for Django dashboard sync
+        if self.vote_db_enabled and self.vote_db:
+            try:
+                self.vote_db.update_progress_from_importer(self.job_id, answer)
+            except Exception as e:
+                logging.warning(f"Could not save progress to database: {e}")
+        return answer
+
+    def write_importer_state(self, state, **details):
+        """
+        Record what the importer is doing in importer_state.json, next to progress.json,
+        for the dashboard. `state` is one of:
+          'processing'      generating and checking reactions
+          'awaiting_input'  nothing to compute until someone confirms a match on the web
+                            page; the dashboard frees the job's worker slot while it waits
+          'finished'        main() completed
+          'stopped'         stopped with the Kill job button
+          'crashed'         main() raised an exception
+        """
+        record = {'state': state, 'pid': os.getpid(), 'port': self.args.port,
+                  'updated': time.strftime('%Y-%m-%dT%H:%M:%S%z')}
+        record.update(details)
+        path = os.path.join(self.args.output_directory, '..', IMPORTER_STATE_FILE)
+        try:
+            write_json_atomically(path, record)
+        except OSError as e:
+            logging.warning("Could not write {0}: {1}".format(path, e))
 
     def _img(self, species):
         """Get the html tag for the image of a species"""
@@ -3395,14 +3488,23 @@ $('#thermomatches_count').html("("+json.thermomatches+")");
     @cherrypy.expose
     def deletemistakes_html(self, errors=None):
         """
-        Process the form from identified_html to remove mistaktes
+        Process the form from identified_html to remove mistakes.
+
+        The labels are removed from SMILES.txt and from the vote database, so they
+        stay unidentified after the restart that this page asks for.
         """
         if not errors:
             return "Nothing to delete"
+        # CherryPy passes one ticked box as a string and several as a list. A string
+        # would make `label in errors` a substring test (deleting CH3 would delete C, H, CH).
+        if isinstance(errors, str):
+            errors = [errors]
+        errors = set(errors)
         output = [self.html_head(), "<h1> Deleting errors</h1>", "<ol>"]
-        for name in errors:
-            output.append(f'<li>{name}</li>')
-        
+        for name in sorted(errors):
+            output.append(f'<li>{html.escape(name)}</li>')
+        output.append('</ol>')
+
         out = []
         with open(self.known_species_file) as infile:
             for line in infile:
@@ -3411,23 +3513,44 @@ $('#thermomatches_count').html("("+json.thermomatches+")");
                     if label in errors:
                         out.append(f"! Deleted by {self.get_username()}: "+line)
                         continue
-                except:
-                    pass
+                except IndexError:
+                    pass  # blank line
                 out.append(line)
-        
+
         with open(self.known_species_file,'w') as outfile:
             outfile.writelines(out)
-                
-        output.extend(['</ol>',
+
+        if self.vote_db_enabled and self.vote_db:
+            try:
+                deleted = self.vote_db.delete_identified_species(self.job_id, sorted(errors))
+                logging.info("Deleted {0} identified species from the vote database: {1}".format(
+                    deleted, ', '.join(sorted(errors))))
+            except Exception as e:
+                logging.error("Could not delete identified species from the vote database: {0}".format(e))
+                output.append("<p>Could not remove them from the vote database ({0}), so they may be "
+                              "identified again after a restart.</p>".format(html.escape(str(e))))
+
+        output.extend([
+            "<p>Restart the job for this to take effect.</p>",
             "<a href='killjob.html'><button type='button'>Kill job</button></a>",
             self.html_tail])
         return ('\n'.join(output))
 
     @cherrypy.expose
     def killjob_html(self):
+        """
+        Stop the importer, after saving the votes. Exits with EXIT_KILLED_FROM_WEB_PAGE
+        rather than 0, so the dashboard records the job as cancelled, not completed.
+        """
         logging.warning("Job killed by user request")
-        cherrypy.engine.exit()
-        os._exit(0)
+        try:
+            self.save_votes_to_storage(force=True)
+        except Exception as e:
+            logging.error("Could not save votes before stopping: {0}".format(e))
+        self.write_importer_state('stopped')
+        # Exit after a moment, so this response reaches the browser first
+        threading.Timer(1.0, os._exit, args=(EXIT_KILLED_FROM_WEB_PAGE,)).start()
+        return "The importer is stopping. You can close this page."
 
 
     @cherrypy.expose
@@ -3503,8 +3626,9 @@ $('#thermomatches_count').html("("+json.thermomatches+")");
         
         if confirm == 'all':
             for chemkin_label, rmg_spec in to_confirm:
+                if not self.queue_manual_match(str(chemkin_label), rmg_spec):
+                    continue  # already identified or already queued
                 self.clear_thermo_match(chemkin_label, None)
-                self.manual_matches_to_process.append((str(chemkin_label), rmg_spec))
                 self.clear_tentative_match(chemkin_label, None)
                 self.save_match_to_file(chemkin_label, rmg_spec, username=self.get_username()+' (because it matches thermo/name in {})'.format(model))
         else:
@@ -4289,7 +4413,9 @@ $('#thermomatches_count').html("("+json.thermomatches+")");
             if match['label'] == ck_label:
                 if str(match['species']) != rmg_label:
                     raise cherrypy.HTTPError(message="Trying to confirm something that wasn't a tentative match!")
-                self.manual_matches_to_process.append((str(ck_label), rmg_species))
+                if not self.queue_manual_match(str(ck_label), rmg_species):
+                    raise cherrypy.HTTPError(409, message="{0} is already identified, or already has a match "
+                                             "waiting to be processed.".format(html.escape(ck_label)))
                 self.tentative_matches.remove(match)
                 break
         else:
@@ -4311,13 +4437,15 @@ $('#thermomatches_count').html("("+json.thermomatches+")");
 
     @cherrypy.expose
     def confirmthermomatch_html(self, ck_label=None, rmg_name=None):
-        for rmg_species in self.thermo_matches[ck_label].keys():
+        for rmg_species in self.thermo_matches.get(ck_label, {}).keys():
             if str(rmg_species) == rmg_name:
                 break
         else:
             return "Trying to confirm something that wasn't a thermo match"
+        if not self.queue_manual_match(str(ck_label), rmg_species):
+            return "{0} is already identified, or already has a match waiting to be processed.".format(
+                html.escape(ck_label))
         self.clear_thermo_match(ck_label, None)
-        self.manual_matches_to_process.append((str(ck_label), rmg_species))
         self.clear_tentative_match(ck_label, None)
         self.save_match_to_file(ck_label, rmg_species, username=self.get_username())
         # referer = cherrypy.request.headers.get("Referer", "thermomatches.html")
@@ -4336,7 +4464,6 @@ $('#thermomatches_count').html("("+json.thermomatches+")");
             return "ck_label not valid"
         for rmg_species in self.votes[ck_label].keys():
             if str(rmg_species) == rmg_label:
-                self.manual_matches_to_process.append((str(ck_label), rmg_species))
                 break
         else:
             # Maybe it was just a thermo match with no votes?
@@ -4344,6 +4471,9 @@ $('#thermomatches_count').html("("+json.thermomatches+")");
             # If that didn't raise a HTTPRedirect, then it wasn't a thermo match either
             return "rmg_label not a candidate for that ck_label"
 
+        if not self.queue_manual_match(str(ck_label), rmg_species):
+            return "{0} is already identified, or already has a match waiting to be processed.".format(
+                html.escape(ck_label))
         self.save_match_to_file(ck_label, rmg_species, username=self.get_username())
         ## Wait for it to be processed:
         #while self.manual_matches_to_process:
@@ -4354,42 +4484,7 @@ $('#thermomatches_count').html("("+json.thermomatches+")");
 
     @cherrypy.expose
     def progress_json(self):
-        total = len(self.species_list)
-        identified = len(self.identified_labels) + len(self.manual_matches_to_process)
-        unprocessed = len(self.identified_unprocessed_labels) + len(self.manual_matches_to_process)
-        tentative = len(self.tentative_matches)
-        unmatchedreactions = len(self.chemkin_reactions_unmatched)
-        totalreactions = len(self.chemkin_reactions)
-        thermomatches = len(self.thermo_matches)
-        answer = {
-            'processed': identified - unprocessed,
-            'unprocessed': unprocessed,
-            'confirmed': identified,
-            'tentative': tentative,
-            'unidentified': total - identified - tentative,
-            'unconfirmed': total - identified,
-            'total': total,
-            'unmatchedreactions': unmatchedreactions,
-            'totalreactions': totalreactions,
-            'thermomatches': thermomatches,
-        }
-        
-        # Write progress.json to disk for SSH-based dashboard sync
-        try:
-            progress_file = os.path.join(self.args.output_directory, '..', 'progress.json')
-            with open(progress_file, 'w') as f:
-                json.dump(answer, f)
-        except Exception as e:
-            logging.debug(f"Could not write progress.json to disk: {e}")
-        
-        # Persist progress to vote database for Django dashboard sync
-        if self.vote_db_enabled and self.vote_db:
-            try:
-                self.vote_db.update_progress_from_importer(self.job_id, answer)
-            except Exception as e:
-                logging.warning(f"Could not save progress to database: {e}")
-        
-        return json.dumps(answer)
+        return json.dumps(self.write_progress_file())
 
     @cherrypy.expose
     def votes_api_json(self):
@@ -4627,7 +4722,7 @@ document.write('<a href="//' + window.location.hostname + '/importer/" >Dashboar
 
 def run_cherry_py_server(args):
     import cherrypy
-    cherrypy.server.socket_host = '0.0.0.0'
+    cherrypy.server.socket_host = args.host
     cherrypy.server.socket_port = args.port
     cherrypy.config.update({
         'environment': 'production',
@@ -4680,6 +4775,7 @@ if __name__ == '__main__':
         logging.info("\n" + "="*60)
         logging.info("INTERRUPTED BY USER - Saving votes before exit...")
         logging.info("="*60)
+        mm.write_importer_state('stopped')
         mm.save_votes_to_storage(force=True)
         mm.export_votes_to_json()
         mm.show_sync_status()
@@ -4690,6 +4786,7 @@ if __name__ == '__main__':
         logging.error(f"CRASH DETECTED - Saving votes before exit...")
         logging.error(f"Error: {e}")
         logging.error("="*60)
+        mm.write_importer_state('crashed', error=str(e))
         mm.save_votes_to_storage(force=True)
         mm.export_votes_to_json()
         mm.show_sync_status()
