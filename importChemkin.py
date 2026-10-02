@@ -155,6 +155,140 @@ def is_library_vote(reaction):
     return str(getattr(reaction, 'family', '')).startswith('library:')
 
 
+# Names that SMILES.txt and the blocked-matches file use for molecules a SMILES can't describe.
+# A SMILES like [CH2] reads back as triplet methylene, so the singlet is written 'singlet[CH2]'.
+SPECIAL_SMILES = {
+    'singlet[CH2]': """
+                    multiplicity 1
+                    1 C u0 p1 {2,S} {3,S}
+                    2 H u0 {1,S}
+                    3 H u0 {1,S}
+                    """,
+    'triplet[CH2]': """
+                    multiplicity 3
+                    1 C u2 {2,S} {3,S}
+                    2 H u0 {1,S}
+                    3 H u0 {1,S}
+                    """,
+    'singletC=[C]': """
+                    multiplicity 1
+                    1 C u0 {2,D} {3,S} {4,S}
+                    2 C u0 p1 {1,D}
+                    3 H u0 {1,S}
+                    4 H u0 {1,S}
+                    """,
+    'tripletC=[C]': """
+                    multiplicity 3
+                    1 C u0 {2,D} {3,S} {4,S}
+                    2 C u2 {1,D}
+                    3 H u0 {1,S}
+                    4 H u0 {1,S}
+                    """,
+    'singlet[CH]O': """
+                    1 O u0 p1 c+1 {2,D} {4,S}
+                    2 C u0 p1 c-1 {1,D} {3,S}
+                    3 H u0 p0 c0 {2,S}
+                    4 H u0 p0 c0 {1,S}
+                    """, # aka [CH-]=[OH+]
+    'triplet[CH]O': """
+                    multiplicity 3
+                    1 C u2 p0 c0 {2,S} {3,S}
+                    2 O u0 p2 c0 {1,S} {4,S}
+                    3 H u0 p0 c0 {1,S}
+                    4 H u0 p0 c0 {2,S}
+                    """, # aka [CH]O
+    '[C]':          "1 C u0 p2 c0",
+    'excited[OH]':  """
+                    multiplicity 2
+                    molecularTermSymbol A^2S+
+                    1 O u1 p2 c0 {2,S}
+                    2 H u0 p0 c0 {1,S}
+                    """, # the 'A' in the molecular term symbol means first excited state
+    'excited[CH]':  """
+                    multiplicity 2
+                    molecularTermSymbol A^2S+
+                    1 C u1 p1 c0 {2,S}
+                    2 H u0 p0 c0 {1,S}
+                    """, # the 'A' in the molecular term symbol means first excited state
+    '[O]singlet':  "1 O u0 p3 c0",  # RMG (via RDKit?) thinks this is water, and prints the wrong SMILES
+    '[NH2+][O-]':    """
+                    multiplicity 2
+                    1 N u1 p0 c+1 {2,S} {3,S} {4,S}
+                    2 O u0 p3 c-1 {1,S}
+                    3 H u0 p0 c0 {1,S}
+                    4 H u0 p0 c0 {1,S}
+                    """,  # workaround a bug
+    'singlet[CH]F': """
+                    multiplicity 1
+                    1 C u0 p1 c0 {2,S} {3,S}
+                    2 H u0 p0 c0 {1,S}
+                    3 F u0 p3 c0 {1,S}
+                    """,
+    'singlet[CH]Cl': """
+                    multiplicity 1
+                    1 C u0 p1 c0 {2,S} {3,S}
+                    2 H u0 p0 c0 {1,S}
+                    3 Cl u0 p3 c0 {1,S}
+                    """,
+    'singletCl[C]Cl': """
+                    multiplicity 1
+                    1 C u0 p1 c0 {2,S} {3,S}
+                    2 Cl u0 p3 c0 {1,S}
+                    3 Cl u0 p3 c0 {1,S}
+                    """,
+    'singletF[C]F': """
+                    multiplicity 1
+                    1 F u0 p3 c0 {2,S}
+                    2 C u0 p1 c0 {1,S} {3,S}
+                    3 F u0 p3 c0 {2,S}
+                    """,
+    'singletF[C]Cl': """
+                    multiplicity 1
+                    1 F u0 p3 c0 {2,S}
+                    2 C u0 p1 c0 {1,S} {3,S}
+                    3 Cl u0 p3 c0 {2,S}
+                    """,
+    'doublet[C]F': """
+                    multiplicity 2
+                    1 C u1 p1 c0 {2,S}
+                    2 F u0 p3 c0 {1,S}
+                    """,
+    'singlet[N]C=C': """
+                    multiplicity 1
+                    1 N u0 p2 c0 {2,S}
+                    2 C u0 p0 c0 {1,S} {3,D} {4,S}
+                    3 C u0 p0 c0 {2,D} {5,S} {6,S}
+                    4 H u0 p0 c0 {2,S}
+                    5 H u0 p0 c0 {3,S}
+                    6 H u0 p0 c0 {3,S}
+                    """,
+    }
+
+
+def molecule_from_known_smiles(smiles):
+    """The molecule that a SMILES in SMILES.txt stands for, special names included (SPECIAL_SMILES)."""
+    if smiles in SPECIAL_SMILES:
+        return Molecule().from_adjacency_list(SPECIAL_SMILES[smiles])
+    return Molecule(smiles=smiles)
+
+
+def known_smiles_for(molecule):
+    """
+    What to write in SMILES.txt for a molecule: its SMILES if that reads back as the same
+    molecule, else the special name that does (singlet[CH2], since [CH2] reads back as triplet
+    methylene), else its SMILES anyway.
+    """
+    smiles = molecule.to_smiles()
+    for candidate in [smiles] + list(SPECIAL_SMILES):
+        try:
+            back = molecule_from_known_smiles(candidate)
+        except Exception:
+            continue
+        if back.multiplicity == molecule.multiplicity and back.is_isomorphic(molecule):
+            return candidate
+    return smiles
+
+
 ################################################################################
 
 def make_or_empty_directory(path):
@@ -1223,7 +1357,7 @@ class ModelMatcher():
                 continue
             formula = self.formula_dict[species_label]
             for smiles, username in blocked_smiles[species_label].items():
-                molecule = Molecule(smiles=smiles)
+                molecule = molecule_from_known_smiles(smiles)
                 if formula != molecule.get_formula():
                     raise Exception("{0} cannot be {1} because the SMILES formula is {2} not required formula {3}.".format(species_label, smiles, molecule.get_formula(), formula))
                 logging.info("Blocking {0} from being {1}".format(species_label, smiles))
@@ -1284,112 +1418,7 @@ class ModelMatcher():
             with open(known_species_file, 'a') as f:
                 f.write('\n')
 
-        special_smiles_to_adj_list = {
-            'singlet[CH2]': """
-                            multiplicity 1
-                            1 C u0 p1 {2,S} {3,S}
-                            2 H u0 {1,S}
-                            3 H u0 {1,S}
-                            """,
-            'triplet[CH2]': """
-                            multiplicity 3
-                            1 C u2 {2,S} {3,S}
-                            2 H u0 {1,S}
-                            3 H u0 {1,S}
-                            """,
-            'singletC=[C]': """
-                            multiplicity 1
-                            1 C u0 {2,D} {3,S} {4,S}
-                            2 C u0 p1 {1,D}
-                            3 H u0 {1,S}
-                            4 H u0 {1,S}
-                            """,
-            'tripletC=[C]': """
-                            multiplicity 3
-                            1 C u0 {2,D} {3,S} {4,S}
-                            2 C u2 {1,D}
-                            3 H u0 {1,S}
-                            4 H u0 {1,S}
-                            """,
-            'singlet[CH]O': """
-                            1 O u0 p1 c+1 {2,D} {4,S}
-                            2 C u0 p1 c-1 {1,D} {3,S}
-                            3 H u0 p0 c0 {2,S}
-                            4 H u0 p0 c0 {1,S}
-                            """, # aka [CH-]=[OH+]
-            'triplet[CH]O': """
-                            multiplicity 3
-                            1 C u2 p0 c0 {2,S} {3,S}
-                            2 O u0 p2 c0 {1,S} {4,S}
-                            3 H u0 p0 c0 {1,S}
-                            4 H u0 p0 c0 {2,S}
-                            """, # aka [CH]O
-            '[C]':          "1 C u0 p2 c0",
-            'excited[OH]':  """
-                            multiplicity 2
-                            molecularTermSymbol A^2S+
-                            1 O u1 p2 c0 {2,S}
-                            2 H u0 p0 c0 {1,S}
-                            """, # the 'A' in the molecular term symbol means first excited state
-            'excited[CH]':  """
-                            multiplicity 2
-                            molecularTermSymbol A^2S+
-                            1 C u1 p1 c0 {2,S}
-                            2 H u0 p0 c0 {1,S}
-                            """, # the 'A' in the molecular term symbol means first excited state
-            '[O]singlet':  "1 O u0 p3 c0",  # RMG (via RDKit?) thinks this is water, and prints the wrong SMILES
-            '[NH2+][O-]':    """
-                            multiplicity 2
-                            1 N u1 p0 c+1 {2,S} {3,S} {4,S}
-                            2 O u0 p3 c-1 {1,S}
-                            3 H u0 p0 c0 {1,S}
-                            4 H u0 p0 c0 {1,S}
-                            """,  # workaround a bug
-            'singlet[CH]F': """
-                            multiplicity 1
-                            1 C u0 p1 c0 {2,S} {3,S}
-                            2 H u0 p0 c0 {1,S}
-                            3 F u0 p3 c0 {1,S}
-                            """,
-            'singlet[CH]Cl': """
-                            multiplicity 1
-                            1 C u0 p1 c0 {2,S} {3,S}
-                            2 H u0 p0 c0 {1,S}
-                            3 Cl u0 p3 c0 {1,S}
-                            """,
-            'singletCl[C]Cl': """
-                            multiplicity 1
-                            1 C u0 p1 c0 {2,S} {3,S}
-                            2 Cl u0 p3 c0 {1,S}
-                            3 Cl u0 p3 c0 {1,S}
-                            """,
-            'singletF[C]F': """
-                            multiplicity 1
-                            1 F u0 p3 c0 {2,S}
-                            2 C u0 p1 c0 {1,S} {3,S}
-                            3 F u0 p3 c0 {2,S}
-                            """,
-            'singletF[C]Cl': """
-                            multiplicity 1
-                            1 F u0 p3 c0 {2,S}
-                            2 C u0 p1 c0 {1,S} {3,S}
-                            3 Cl u0 p3 c0 {2,S}
-                            """,
-            'doublet[C]F': """
-                            multiplicity 2
-                            1 C u1 p1 c0 {2,S}
-                            2 F u0 p3 c0 {1,S}
-                            """,
-            'singlet[N]C=C': """
-                            multiplicity 1
-                            1 N u0 p2 c0 {2,S}
-                            2 C u0 p0 c0 {1,S} {3,D} {4,S}
-                            3 C u0 p0 c0 {2,D} {5,S} {6,S}
-                            4 H u0 p0 c0 {2,S}
-                            5 H u0 p0 c0 {3,S}
-                            6 H u0 p0 c0 {3,S}
-                            """,
-            }
+        special_smiles_to_adj_list = SPECIAL_SMILES
 
         for species_label in known_names:
             if species_label not in self.formula_dict:
@@ -2115,7 +2144,7 @@ class ModelMatcher():
         with open(self.blocked_matches_file, 'a') as f:
             f.write("{name}\t{smi}{user}\n".format(
                 name=ck_label,
-                smi=rmg_species.molecule[0].to_smiles(),
+                smi=known_smiles_for(rmg_species.molecule[0]),
                 user=user_text))
         return True
 
@@ -2141,7 +2170,7 @@ class ModelMatcher():
         with open(self.known_species_file, 'a') as f:
             f.write("{name}\t{smi}{user}\n".format(
                 name=ck_label,
-                smi=rmg_species.molecule[0].to_smiles(),
+                smi=known_smiles_for(rmg_species.molecule[0]),
                 user=user_text))
         return True
 
