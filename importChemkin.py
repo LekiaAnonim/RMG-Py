@@ -20,6 +20,7 @@ import argparse
 import logging
 import re
 import codecs
+import collections
 import traceback
 
 import hashlib
@@ -153,6 +154,10 @@ class LibraryReactionVote(ReactionPlaceholder):
 def is_library_vote(reaction):
     """True for votes that came from the evidence index (also when restored after a restart)."""
     return str(getattr(reaction, 'family', '')).startswith('library:')
+
+
+# Who proposed a tentative match that came from copied chemistry (see refresh_copied_chemistry)
+COPIED_CHEMISTRY = 'copied chemistry'
 
 
 # Names that SMILES.txt and the blocked-matches file use for molecules a SMILES can't describe.
@@ -565,7 +570,12 @@ class ModelMatcher():
         self.structure_keys = {}  # identified label -> evidence-index structure key
         self.library_candidates = {}  # structure key -> RMG species proposed by the evidence index
         self.chemkin_rate_fingerprints = {}  # CHEMKIN reaction index -> rate fingerprint
+        self.chemkin_thermo_values = {}  # CHEMKIN label -> evidence_index.thermo_values of its thermo
         self.library_votes_state = None  # what was identified and blocked when the library votes were made
+        self.copied_candidates = {}  # unidentified label -> [evidence_index.CopiedCandidate], best first
+        self.copied_proposals = {}  # label -> the CopiedCandidate confident enough to propose
+        self.copied_smiles = {}  # structure key -> SMILES, for showing copied-chemistry candidates
+        self.copied_state = None  # what was identified and blocked when they were found
         self.already_processed_labels = set()
         """A set of chemkin labels that have already been fully processed (limit_enlarge completed).
         On restart, these species are skipped to avoid expensive re-computation."""
@@ -3074,6 +3084,8 @@ class ModelMatcher():
         # Votes from library reactions in the evidence index, and the tentative matches they give
         if self.refresh_library_votes():
             self.propose_tentative_matches(self.prune_voting())
+        # Species whose chemistry was copied from an earlier mechanism: needs nothing identified
+        self.refresh_copied_chemistry()
 
         if not self.identified_unprocessed_labels:
             # Nothing new to process, e.g. every identified species was processed in an
@@ -3131,6 +3143,7 @@ class ModelMatcher():
             # reactions to check, act on them now rather than waiting for the next species
             if self.refresh_library_votes() and not reactions_to_check:
                 self.propose_tentative_matches(self.prune_voting())
+            self.refresh_copied_chemistry()
 
             while reactions_to_check:
                 self.check_reactions_for_matches(reactions_to_check)
@@ -3358,9 +3371,7 @@ class ModelMatcher():
         """
         if not self.evidence:
             return False
-        state = (frozenset(self.identified_labels),
-                 frozenset((label, id(species)) for label, blocked in self.blocked_matches.items()
-                           for species in blocked))
+        state = self._identification_state()
         if state == self.library_votes_state:
             return False
         self.library_votes_state = state
@@ -3409,6 +3420,138 @@ class ModelMatcher():
                      "that contain one ({3:.1f} s)".format(n_votes, n_labels, len(reactions), time.time() - started))
         return changed
 
+    def _identification_state(self):
+        """
+        What is identified and what is blocked. The library votes and the copied chemistry depend
+        only on this, and everything else that changes them (making or blocking a match) changes it.
+        """
+        return (frozenset(self.identified_labels),
+                frozenset((label, id(species)) for label, blocked in self.blocked_matches.items()
+                          for species in blocked))
+
+    def _chemkin_thermo(self, label):
+        """evidence_index.thermo_values of a CHEMKIN species' thermo (or None), cached."""
+        if label not in self.chemkin_thermo_values:
+            thermo = self.thermo_dict.get(label)
+            self.chemkin_thermo_values[label] = evidence_index.thermo_values(thermo) if thermo else None
+        return self.chemkin_thermo_values[label]
+
+    def refresh_copied_chemistry(self):
+        """
+        Find the species whose chemistry the mechanism copied from an earlier import or an
+        RMG-database library (see evidence_index.copied_chemistry). Nothing needs to be identified
+        first: a reaction with the same formulas and rate constants as a library's pairs their
+        species up, and copied thermo and shared names add to that. The confident candidates
+        become tentative matches proposed by copied chemistry, unless their enthalpy is far off,
+        and copied.html shows them with their evidence, to be confirmed a source at a time.
+        Like the library votes, they are found again only when what is identified or blocked changes.
+        """
+        if not self.evidence:
+            return
+        state = self._identification_state()
+        if state == self.copied_state:
+            return
+        self.copied_state = state
+        started = time.time()
+        species = {label: (formula, self._chemkin_thermo(label)) for label, formula in self.formula_dict.items()}
+        reactions = [(index, [s.label for s in reaction.reactants], [s.label for s in reaction.products],
+                      self._chemkin_rate(index, reaction)) for index, reaction in enumerate(self.chemkin_reactions)]
+        identified = {label: self.structure_key_for_label(label) for label in self.identified_labels}
+        blocked = set()
+        for label, blocks in self.blocked_matches.items():
+            for rmg_species in blocks:
+                try:
+                    blocked.add((label, evidence_index.structure_key(rmg_species.molecule[0])))
+                except Exception:
+                    pass
+        candidates = evidence_index.copied_chemistry(
+            self.evidence, species, reactions, {label: key for label, key in identified.items() if key}, blocked)
+        proposals = evidence_index.confident_proposals(candidates)
+        missing = {c.key for found in candidates.values() for c in found[:3]} - set(self.copied_smiles)
+        if missing:
+            shown = dict(self.copied_smiles)
+            for key, structure in self.evidence.structures(missing).items():
+                shown[key] = self._display_smiles(key, structure[1])
+            self.copied_smiles = shown
+        self.copied_candidates, self.copied_proposals = candidates, proposals
+
+        wanted = {}
+        for label, candidate in proposals.items():
+            rmg_species = self._library_candidate(candidate.key)
+            if rmg_species is None:
+                continue
+            discrepancy = self.get_enthalpy_discrepancy(label, rmg_species)
+            if abs(discrepancy) > 150:
+                logging.info("Not proposing {0} = {1!s} from copied chemistry: its enthalpy is {2:.0f} kJ/mol "
+                             "off".format(label, rmg_species, discrepancy))
+                continue
+            wanted[label] = (candidate, rmg_species)
+        # drop earlier copied-chemistry proposals that the evidence no longer supports
+        for match in list(self.tentative_matches):
+            if (str(match.get('username') or '').startswith(COPIED_CHEMISTRY) and
+                    wanted.get(match['label'], (None, None))[1] is not match['species']):
+                self.tentative_matches.remove(match)
+        proposed = 0
+        for label, (candidate, rmg_species) in wanted.items():
+            if self._tentative_conflict(label, rmg_species, copied=False):
+                continue  # the votes propose something else: leave that, and copied.html shows both
+            if self.set_tentative_match(label, rmg_species,
+                                        username='{0} ({1})'.format(COPIED_CHEMISTRY, candidate.main_source())):
+                proposed += 1
+        logging.info("Copied chemistry: candidates for {0} unidentified species, {1} confident enough to "
+                     "propose, {2} of them now tentative matches ({3:.1f} s)".format(
+                         len(candidates), len(proposals), proposed, time.time() - started))
+
+    @staticmethod
+    def _display_smiles(key, smiles):
+        """
+        A structure's SMILES for copied.html, written like SMILES.txt writes it: with 'singlet'
+        or 'triplet' in front when the SMILES alone would read as another spin state.
+        """
+        try:
+            multiplicity = int(key.rsplit('-', 1)[1])
+            if Molecule(smiles=smiles).multiplicity != multiplicity:
+                return {1: 'singlet', 3: 'triplet'}.get(multiplicity, 'multiplicity {0} '.format(multiplicity)) + smiles
+        except Exception:
+            pass
+        return smiles or ''
+
+    def _tentative_conflict(self, label, rmg_species, copied=True):
+        """
+        A tentative match that disagrees with label = rmg_species (another species for the label,
+        or another label for the species), or None. With copied=False, only those from the votes.
+        """
+        for match in list(self.tentative_matches):
+            if not copied and str(match.get('username') or '').startswith(COPIED_CHEMISTRY):
+                continue
+            if (match['label'] == label) != (match['species'] is rmg_species):
+                return match
+        return None
+
+    def _copied_ready(self):
+        """
+        {label: (CopiedCandidate, RMG species)} for the copied-chemistry proposals that are
+        tentative matches now: confident, with a plausible enthalpy, and not contradicted by a
+        proposal from the votes (set_tentative_match drops both when two proposals disagree).
+        """
+        tentative = {match['label']: match['species'] for match in list(self.tentative_matches)}
+        ready = {}
+        for label, candidate in list(self.copied_proposals.items()):
+            rmg_species = self.library_candidates.get(candidate.key)
+            if rmg_species is not None and tentative.get(label) is rmg_species:
+                ready[label] = (candidate, rmg_species)
+        return ready
+
+    def _confirm_copied(self, label, rmg_species, source):
+        """Confirm a copied-chemistry match, as the other confirm handlers do. False if it can't be queued."""
+        if not self.queue_manual_match(str(label), rmg_species):
+            return False
+        self.clear_thermo_match(label, None)
+        self.clear_tentative_match(label, None)
+        self.save_match_to_file(label, rmg_species, username='{0} ({1} from {2})'.format(
+            self.get_username(), COPIED_CHEMISTRY, source))
+        return True
+
     def check_evidence_thermo(self):
         """
         Thermo matches from the evidence index: every RMG-database thermo library and every
@@ -3422,14 +3565,12 @@ class ModelMatcher():
         for label, formula in self.formula_dict.items():
             if label not in self.identified_labels:
                 labels_by_formula.setdefault(formula, []).append(label)
-        chemkin_values, found = {}, 0
+        found = 0
         for source, entry_label, key, formula, values in self.evidence.thermo_for_formulas(labels_by_formula):
             if source in loaded:
                 continue
             for ck_label in labels_by_formula.get(formula, []):
-                if ck_label not in chemkin_values:
-                    chemkin_values[ck_label] = evidence_index.thermo_values(self.thermo_dict[ck_label])
-                if evidence_index.thermo_values_match(values, chemkin_values[ck_label]):
+                if evidence_index.thermo_values_match(values, self._chemkin_thermo(ck_label)):
                     species = self._library_candidate(key)
                     if species is not None:
                         logging.info("Thermo match found for chemkin species {0} in {1}".format(ck_label, source))
@@ -3490,6 +3631,7 @@ class ModelMatcher():
                              " (port {0})").format(self.args.port))
             while not self.manual_matches_to_process:
                 time.sleep(1)
+                self.refresh_copied_chemistry()  # redone only if a match was blocked meanwhile
             self.write_importer_state('processing')
 
             while self.manual_matches_to_process:
@@ -3576,6 +3718,7 @@ class ModelMatcher():
             'unmatchedreactions': unmatchedreactions,
             'totalreactions': totalreactions,
             'thermomatches': thermomatches,
+            'copied': len(self._copied_ready()),  # copied-chemistry proposals waiting on copied.html
         }
 
         progress_file = os.path.join(self.args.output_directory, '..', 'progress.json')
@@ -3632,7 +3775,9 @@ class ModelMatcher():
         species = lookup.get(index)
         if species is None:
             rm = self.rmg_object.reaction_model
-            lookup = {s.index: s for s in rm.core.species + rm.edge.species}
+            # species made from the evidence index are in neither the core nor the edge
+            made = [s for s in list(self.library_candidates.values()) if s is not None]
+            lookup = {s.index: s for s in rm.core.species + rm.edge.species + made}
             self._species_by_index = lookup
             species = lookup.get(index)
         if species is not None and str(species) == name:
@@ -3674,6 +3819,7 @@ $('#tentative_count').html("("+json.tentative+")");
 $('#unmatchedreactions_count').html("("+json.unmatchedreactions+")");
 $('#unconfirmedspecies_count').html("("+json.unconfirmed+")");
 $('#thermomatches_count').html("("+json.thermomatches+")");
+$('#copied_count').html("("+json.copied+")");
 }
 </script>
 <h1>Mechanism importer: """ + name + """</h1>
@@ -3681,6 +3827,7 @@ $('#thermomatches_count').html("("+json.thermomatches+")");
 <li><a href="species.html">All species.</a> (Sorted by <a href="species.html?sort=name">name</a> or <a href="species.html?sort=formula">formula</a>.)</li>
 <li><a href="identified.html">Identified species.</a> <span id="identified_count"></span></li>
 <li><a href="tentative.html">Tentative Matches.</a> <span id="tentative_count"></span></li>
+<li><a href="copied.html">Copied chemistry: proposals to confirm a source at a time.</a> <span id="copied_count"></span></li>
 <li><a href="votes.html">Voting reactions list view.</a></li>
 <li><a href="votes2.html">Voting reactions table view.</a></li>
 <li><a href="autoconfirm.html">Autoconfirm table.</a></li>
@@ -3899,6 +4046,150 @@ $('#thermomatches_count').html("("+json.thermomatches+")");
             output.append("<a href='thermomatchesmodel.html?model={model}&confirm=all'><button>Confirm all</button></a>".format(model=model))
 
         return ('\n'.join(output))
+
+    def _copied_evidence_html(self, candidate):
+        """A short summary of a copied-chemistry candidate's evidence, with the details on hover."""
+        esc = html.escape
+        parts = []
+        if candidate.reactions:
+            n = len(candidate.reactions)
+            sources = sorted({source for found in candidate.reactions.values() for source in found})
+            details = [str(self.chemkin_reactions[i]) for i in sorted(candidate.reactions)[:5]]
+            details.append('in ' + ', '.join(sources[:8]) + (' and {0} more'.format(len(sources) - 8)
+                                                            if len(sources) > 8 else ''))
+            parts.append("<span title='{0}'>{1} copied reaction{2}</span>".format(
+                esc('\n'.join(details), quote=True), n, '' if n == 1 else 's'))
+        if candidate.thermo:
+            parts.append("<span title='{0}'>copied thermo</span>".format(
+                esc(', '.join(sorted(candidate.thermo)), quote=True)))
+        if candidate.names:
+            parts.append("<span title='{0}'>same name</span>".format(
+                esc(', '.join(sorted(candidate.names)), quote=True)))
+        return ' &middot; '.join(parts)
+
+    @cherrypy.expose
+    def copied_html(self, source=None, confirm=None):
+        """
+        Species whose chemistry the mechanism copied from earlier imports or RMG-database
+        libraries (see refresh_copied_chemistry), grouped by the source most of their evidence
+        came from, with a button to confirm a whole group.
+        """
+        if confirm == 'all' and source and cherrypy.request.method == 'POST':
+            confirmed = 0
+            for label, (candidate, rmg_species) in self._copied_ready().items():
+                if candidate.main_source() == source and self._confirm_copied(label, rmg_species, source):
+                    confirmed += 1
+            logging.info("Confirmed {0} copied-chemistry matches from {1}".format(confirmed, source))
+            raise cherrypy.HTTPRedirect('copied.html')
+
+        esc, img = html.escape, self._img
+        candidates, proposals, smiles = self.copied_candidates, self.copied_proposals, self.copied_smiles
+        ready = self._copied_ready()
+        settled = set(self.identified_labels) | {label for label, _ in list(self.manual_matches_to_process)}
+        output = [self.html_head(), '<h1>Copied chemistry</h1>']
+        if not self.evidence:
+            output.extend(['<p>This importer has no evidence index, so there is nothing to show.</p>', self.html_tail])
+            return '\n'.join(output)
+        output.append(
+            "<p>Species whose reactions (with the same rate constants), thermo or names this mechanism shares with "
+            "earlier imports and RMG-database libraries. A copied reaction counts 1, however many sources have it; "
+            "copied thermo counts {0} and the same name {1}. A proposal needs {2} or more, more than any other "
+            "candidate, and an enthalpy within 150 kJ/mol. Hover over the evidence for the details.</p>".format(
+                evidence_index.THERMO_WEIGHT, evidence_index.LABEL_WEIGHT, evidence_index.CONFIDENT_SCORE))
+
+        groups = collections.defaultdict(list)
+        for label, (candidate, rmg_species) in ready.items():
+            groups[candidate.main_source()].append((label, candidate, rmg_species))
+        output.append('<h2>{0} proposals to confirm</h2>'.format(len(ready)))
+        if not ready:
+            output.append('<p>None at the moment.</p>')
+        for group_source, rows in sorted(groups.items(), key=lambda group: (-len(group[1]), group[0])):
+            output.append("<h3>From {0} ({1})</h3>".format(esc(group_source), len(rows)))
+            output.append("<form method='post' action='copied.html'><input type='hidden' name='source' value='{0}'>"
+                          "<input type='hidden' name='confirm' value='all'><button type='submit'>Confirm all {1} "
+                          "from {2}</button></form>".format(esc(group_source, quote=True), len(rows), esc(group_source)))
+            output.append("<table style='border-collapse:collapse;'><tr><th>Name</th><th>Molecule</th><th>Score</th>"
+                          "<th>Evidence</th><th>&Delta;H&deg;<sub>f</sub>(298K)</th><th></th><th></th></tr>")
+            for label, candidate, rmg_species in sorted(rows, key=lambda row: row[0]):
+                output.append(
+                    "<tr style='border-top: 1px solid #ccc;'><td>{label}</td><td>{img}<br><small>{smiles}</small></td>"
+                    "<td class='centered'>{score}</td><td>{evidence}</td><td>{dh:.1f} kJ/mol</td>"
+                    "<td><a href='confirmcopied.html?ck_label={ckl}&key={key}' class='confirm'>confirm</a></td>"
+                    "<td><a href='block.html?ck_label={ckl}&rmg_label={rmgl}' class='block'>block</a></td></tr>".format(
+                        label=esc(label), img=img(rmg_species), smiles=esc(smiles.get(candidate.key, '')),
+                        score=candidate.score,
+                        evidence=self._copied_evidence_html(candidate),
+                        dh=self.get_enthalpy_discrepancy(label, rmg_species), key=urllib.parse.quote(candidate.key),
+                        ckl=urllib.parse.quote(label), rmgl=urllib.parse.quote(str(rmg_species))))
+            output.append('</table>')
+
+        held = [(label, candidate) for label, candidate in sorted(proposals.items())
+                if label not in ready and label not in settled]
+        if held:
+            output.append('<h2>{0} proposals held back</h2>'.format(len(held)))
+            output.append("<p>Confident from the copied chemistry, but not tentative matches: the enthalpy is far "
+                          "off, a proposal from the votes disagrees, or the match was cleared. Check them before "
+                          "confirming.</p>")
+            output.append("<table style='border-collapse:collapse;'><tr><th>Name</th><th>Molecule</th><th>Score</th>"
+                          "<th>Evidence</th><th>Why</th><th></th></tr>")
+            for label, candidate in held:
+                rmg_species = self.library_candidates.get(candidate.key)
+                if rmg_species is None:
+                    why, picture, link = "RMG couldn't make this structure", esc(smiles.get(candidate.key, '')), ''
+                else:
+                    dh = self.get_enthalpy_discrepancy(label, rmg_species)
+                    conflict = self._tentative_conflict(label, rmg_species)
+                    if abs(dh) > 150:
+                        why = "its enthalpy is {0:.0f} kJ/mol off".format(dh)
+                    elif conflict is not None and conflict['label'] == label:
+                        why = "the tentative match for {0} is {1}".format(esc(label), img(conflict['species']))
+                    elif conflict is not None:
+                        why = "{0} has this structure as its tentative match".format(esc(conflict['label']))
+                    else:
+                        why = "it was cleared"
+                    why += " (<a href='votes2.html#{0}'>votes</a>)".format(urllib.parse.quote(label))
+                    picture = "{0}<br><small>{1}</small>".format(img(rmg_species), esc(smiles.get(candidate.key, '')))
+                    link = "<a href='confirmcopied.html?ck_label={0}&key={1}'>confirm</a>".format(
+                        urllib.parse.quote(label), urllib.parse.quote(candidate.key))
+                output.append("<tr style='border-top: 1px solid #ccc;'><td>{0}</td><td>{1}</td><td class='centered'>{2}</td>"
+                              "<td>{3}</td><td>{4}</td><td>{5}</td></tr>".format(
+                                  esc(label), picture, candidate.score, self._copied_evidence_html(candidate), why, link))
+            output.append('</table>')
+
+        weaker = sorted(((label, found) for label, found in candidates.items()
+                         if label not in proposals and label not in settled),
+                        key=lambda item: (-item[1][0].score, item[0]))
+        if weaker:
+            output.append('<h2>{0} species with weaker evidence</h2>'.format(len(weaker)))
+            output.append("<p>Not proposed: too little evidence, or a tie. Up to three candidates each, best first.</p>")
+            output.append("<table style='border-collapse:collapse;'><tr><th>Name</th><th>Candidate</th><th>Score</th>"
+                          "<th>Evidence</th><th></th></tr>")
+            for label, found in weaker:
+                for i, candidate in enumerate(found[:3]):
+                    output.append(
+                        "<tr{border}><td>{label}</td><td>{smiles}</td><td class='centered'>{score}</td><td>{evidence}</td>"
+                        "<td><a href='confirmcopied.html?ck_label={ckl}&key={key}'>confirm</a></td></tr>".format(
+                            border=" style='border-top: 1px solid #ccc;'" if i == 0 else '',
+                            label=esc(label) if i == 0 else '', smiles=esc(smiles.get(candidate.key, candidate.key)),
+                            score=candidate.score, evidence=self._copied_evidence_html(candidate),
+                            ckl=urllib.parse.quote(label), key=urllib.parse.quote(candidate.key)))
+            output.append('</table>')
+        output.append(self.html_tail)
+        return '\n'.join(output)
+
+    @cherrypy.expose
+    def confirmcopied_html(self, ck_label=None, key=None):
+        """Confirm one copied-chemistry candidate from copied.html (it needn't be a proposal)."""
+        candidate = next((c for c in self.copied_candidates.get(ck_label, []) if c.key == key), None)
+        if candidate is None:
+            return "That isn't a copied-chemistry candidate for {0}.".format(html.escape(str(ck_label)))
+        rmg_species = self._library_candidate(key)
+        if rmg_species is None:
+            return "RMG couldn't make that structure."
+        if not self._confirm_copied(ck_label, rmg_species, candidate.main_source()):
+            return "{0} is already identified, or already has a match waiting to be processed.".format(
+                html.escape(ck_label))
+        raise cherrypy.HTTPRedirect(get_relative_referer("copied.html"))
 
     @cherrypy.expose
     def tentative_html(self):

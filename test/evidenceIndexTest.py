@@ -158,17 +158,23 @@ class TestMatching:
         assert not ei.rates_match(ei.rate_fingerprint(k), ei.rate_fingerprint(k3))
 
 
-class TestIndex:
+@pytest.fixture
+def index(tmp_path):
+    models = str(tmp_path / 'RMG-models')
+    earlier = write_model(models, os.path.join('Journal', 'Earlier'))
+    current = write_model(models, os.path.join('Journal', 'Current'),
+                          reactions=REACTIONS.replace('C2H4 + H <=> C2H5', 'C2H4 + H <=> C2H5 + H + H'))
+    path = str(tmp_path / 'index.sqlite')
+    assert ei.build(path, None, models) == 2
+    return path, models, earlier, current
 
-    @pytest.fixture
-    def index(self, tmp_path):
-        models = str(tmp_path / 'RMG-models')
-        earlier = write_model(models, os.path.join('Journal', 'Earlier'))
-        current = write_model(models, os.path.join('Journal', 'Current'),
-                              reactions=REACTIONS.replace('C2H4 + H <=> C2H5', 'C2H4 + H <=> C2H5 + H + H'))
-        path = str(tmp_path / 'index.sqlite')
-        assert ei.build(path, None, models) == 2
-        return path, models, earlier, current
+
+def rate(A):
+    """Rate fingerprint of k = A cm^3/(mol*s), as in the test libraries."""
+    return ei.rate_fingerprint(Arrhenius(A=(A, 'cm^3/(mol*s)'), n=0, Ea=(0, 'kcal/mol'), T0=(1, 'K')))
+
+
+class TestIndex:
 
     def test_build_and_lookups(self, index):
         path, models, earlier, current = index
@@ -218,3 +224,68 @@ class TestIndex:
             f.write('\n')
         assert ei.build(path, None, models, refresh=True) == 1
         assert ei.EvidenceIndex(path).counts()[1][1] == 4
+
+
+class TestCopiedChemistry:
+    """Species identified by chemistry the mechanism copied, with nothing identified first."""
+
+    # a CHEMKIN reaction with made-up labels: MET + HYD <=> METHANE
+    SPECIES = {'MET': ('CH3', None), 'HYD': ('H', None), 'METHANE': ('CH4', None)}
+
+    @staticmethod
+    def reaction(A=1e14):
+        return [(1, ['MET', 'HYD'], ['METHANE'], rate(A))]
+
+    def test_a_copied_reaction_pairs_species_by_formula(self, index):
+        path, models, earlier, current = index
+        idx = ei.EvidenceIndex(path, exclude_paths=[current])
+        found = ei.copied_chemistry(idx, self.SPECIES, self.reaction())
+        assert [c.key for c in found['MET']] == [key('[CH3]')]
+        assert found['MET'][0].reactions == {1: {'Journal/Earlier'}}  # not Journal/Current
+        assert found['MET'][0].score == 1
+        assert found['HYD'][0].key == key('[H]') and found['METHANE'][0].key == key('C')
+        assert ei.copied_chemistry(idx, self.SPECIES, self.reaction(A=3e14)) == {}  # other rate constants
+
+    def test_a_reaction_copied_into_many_sources_counts_once(self, index):
+        path, models, earlier, current = index
+        write_model(models, os.path.join('Journal', 'Another'))
+        assert ei.build(path, None, models, refresh=True) == 1
+        found = ei.copied_chemistry(ei.EvidenceIndex(path, exclude_paths=[current]), self.SPECIES, self.reaction())
+        assert found['MET'][0].reactions == {1: {'Journal/Another', 'Journal/Earlier'}}
+        assert found['MET'][0].score == 1
+
+    def test_identified_species_constrain_the_pairing(self, index):
+        path, models, earlier, current = index
+        idx = ei.EvidenceIndex(path, exclude_paths=[current])
+        found = ei.copied_chemistry(idx, self.SPECIES, self.reaction(), identified={'HYD': key('[H]')})
+        assert set(found) == {'MET', 'METHANE'}
+        # a library reaction that pairs an identified species with another structure isn't counted
+        assert ei.copied_chemistry(idx, self.SPECIES, self.reaction(), identified={'HYD': key('[CH3]')}) == {}
+        found = ei.copied_chemistry(idx, self.SPECIES, self.reaction(), blocked={('MET', key('[CH3]'))})
+        assert 'MET' not in found
+
+    def test_copied_thermo_and_names_add_to_the_score(self, index):
+        from rmgpy.thermo import NASA, NASAPolynomial  # noqa: F401 (used by eval)
+        path, models, earlier, current = index
+        idx = ei.EvidenceIndex(path, exclude_paths=[current])
+        values = ei.thermo_values(eval(CH4_NASA))
+        species = {'CH4': ('CH4', values), 'ch3': ('CH3', None), 'X': ('H', None)}
+        found = ei.copied_chemistry(idx, species, [(1, ['ch3', 'X'], ['CH4'], rate(1e14))])
+        methane = found['CH4'][0]
+        assert methane.thermo == {'Journal/Earlier'} and methane.names == {'Journal/Earlier'}
+        assert methane.score == 1 + ei.THERMO_WEIGHT + ei.LABEL_WEIGHT
+        assert found['ch3'][0].names == {'Journal/Earlier'}  # names are compared ignoring case
+        assert set(ei.confident_proposals(found)) == {'CH4', 'ch3'}  # X has only the reaction
+        species['CH4'] = ('CH4', [v * 1.02 for v in values])
+        assert not ei.copied_chemistry(idx, species, [])['CH4'][0].thermo  # similar thermo isn't copied
+
+    def test_confident_proposals(self):
+        def candidate(key, n):
+            c = ei.CopiedCandidate(key)
+            c.reactions = {i: {'Source'} for i in range(n)}
+            return c
+        found = {'A': [candidate('k1', 3)],
+                 'B': [candidate('k2', 3), candidate('k3', 3)],  # a tie
+                 'C': [candidate('k4', 2)],                      # too little evidence
+                 'D': [candidate('k5', 4)], 'E': [candidate('k5', 3)]}  # one structure, two labels
+        assert set(ei.confident_proposals(found)) == {'A'}

@@ -17,18 +17,22 @@ The index is a SQLite file:
     reactions   library reactions as structure keys, plus a formula signature (the index used
                 at import time) and a rate fingerprint (log10 k at 500, 1000 and 1500 K, 1 bar)
 
-The importer looks up only the reactions that can still say something: those whose formula
-signature matches a CHEMKIN reaction containing an unidentified species. Matching them is a
-comparison of structure keys, with no RMG reaction generation. RMG's reaction families keep
-generating new reactions and species as before; this adds a second, labelled source of votes.
-A library reaction votes only when it is corroborated (see MIN_SOURCES): its rate constants
-match the CHEMKIN file's, or at least two sources have it.
+The importer uses it in two ways, both lookups with no RMG reaction generation:
+  - Copied chemistry (copied_chemistry): most mechanisms reuse sub-mechanisms from earlier ones.
+    A CHEMKIN reaction with the same formulas and rate constants as a library reaction was copied,
+    so its species are the library's; copied thermo and shared names add to that. This needs
+    nothing identified first, and the confident proposals can be confirmed a source at a time.
+  - Library votes (library_votes): a CHEMKIN reaction with one unidentified species votes for a
+    structure when a library has the same reaction with the same structures for the identified
+    species. It votes only when corroborated (see MIN_SOURCES).
+RMG's reaction families keep generating new reactions and species as before; they are still the
+only way to find a structure that no library has.
 
 Commands:
     python evidence_index.py build     --index FILE --database DIR --models DIR
     python evidence_index.py refresh   --index FILE --database DIR --models DIR
     python evidence_index.py stats     --index FILE
-    python evidence_index.py benchmark --index FILE
+    python evidence_index.py benchmark --index FILE [--copied | --min_sources N]
 `refresh` re-reads only libraries whose files changed, so it is cheap after each import.
 """
 import argparse
@@ -66,6 +70,18 @@ RATE_TOLERANCE = 0.01  # in log10 k, about 2%
 # 76.2% instead of 81.3%, and 86.1% instead of 83.0%). A wrong vote costs more than a missing
 # one, since RMG's reaction families still vote either way.
 MIN_SOURCES = 2
+
+# Copied chemistry (see copied_chemistry): most mechanisms reuse sub-mechanisms from earlier
+# ones, with their rate constants, thermo and species names. Each copied reaction counts once,
+# however many sources have it (52 sources with one rate expression are one piece of evidence).
+# A proposal needs a score of CONFIDENT_SCORE and more than the next candidate's. In the
+# leave-one-model-out benchmark (benchmark --copied), with nothing identified, that proposes
+# 86.4% of species, 99.0% of them right (61.6% and 98.0% without near-duplicate models).
+# Demanding twice the next score raised precision by under a point and cut proposals by 11-19.
+COPIED_THERMO_TOLERANCE = 1e-3  # relative: the same polynomial, not merely similar thermo
+THERMO_WEIGHT = 2               # copied thermo counts as much as two copied reactions
+LABEL_WEIGHT = 2                # so does a source giving the structure the same name
+CONFIDENT_SCORE = 3
 
 SCHEMA = """
 CREATE TABLE meta (name TEXT PRIMARY KEY, value TEXT);
@@ -406,6 +422,8 @@ def build(index_path, database_dir, models_dir, refresh=False):
             conn = sqlite3.connect(temporary)
             conn.executescript(SCHEMA)
             conn.execute("INSERT INTO meta VALUES ('schema_version', ?)", (SCHEMA_VERSION,))
+        # for looking species up by name; added here so that indexes built before it get it too
+        conn.execute("CREATE INDEX IF NOT EXISTS names_label ON names (label COLLATE NOCASE)")
         existing = {name: (source_id, fingerprint) for source_id, name, fingerprint in
                     conn.execute("SELECT id, name, fingerprint FROM sources")}
         sources = find_sources(database_dir, models_dir)
@@ -493,6 +511,13 @@ class EvidenceIndex:
                     "WHERE signature IN ({0})", set(signatures))
                 if s not in self.excluded]
 
+    def names_for_labels(self, labels):
+        """[(source name, label, key)] for the structures that a source gives one of these labels, ignoring case."""
+        return [(self.source_names[s], label, key)
+                for s, label, key in self._rows(
+                    "SELECT source_id, label, key FROM names WHERE label COLLATE NOCASE IN ({0})", set(labels))
+                if s not in self.excluded]
+
     def structures(self, keys):
         """{key: (formula, smiles, adjlist)}."""
         return {key: (formula, smiles, adjlist) for key, formula, smiles, adjlist in self._rows(
@@ -567,6 +592,154 @@ def library_votes(index, chemkin_reactions, min_sources=MIN_SOURCES):
 
 
 ################################################################################
+# Copied chemistry: what a new mechanism copied from earlier ones says about its species
+
+def thermo_copied(a, b):
+    """True if two lists of thermo values (see thermo_values) are the same within COPIED_THERMO_TOLERANCE."""
+    return bool(a and b) and all(abs(x - y) <= COPIED_THERMO_TOLERANCE * max(abs(x), abs(y), 1.0)
+                                 for x, y in zip(a, b))
+
+
+def pair_by_formula(labels, keys, formula_of_label, formula_of_key):
+    """
+    Pair the species on one side of a CHEMKIN reaction with those on the same side of a library
+    reaction that has the same formulas: [(label, key)] for every formula that is one species on
+    both sides. Isomers on the same side can't be told apart, so they are left unpaired.
+    """
+    by_formula = collections.defaultdict(lambda: (set(), set()))
+    for label in labels:
+        by_formula[formula_of_label[label]][0].add(label)
+    for key in keys:
+        by_formula[formula_of_key.get(key)][1].add(key)
+    return [(next(iter(ls)), next(iter(ks))) for ls, ks in by_formula.values() if len(ls) == 1 and len(ks) == 1]
+
+
+class CopiedCandidate:
+    """A structure an unidentified species may have, with the copied chemistry that says so."""
+
+    def __init__(self, key):
+        self.key = key
+        self.reactions = {}  # CHEMKIN reaction id -> sources that have it with the same rate constants
+        self.thermo = set()  # sources with the same thermo
+        self.names = set()   # sources that give this structure the same name
+
+    @property
+    def score(self):
+        """Each copied reaction counts once, plus THERMO_WEIGHT for copied thermo and LABEL_WEIGHT for the name."""
+        return len(self.reactions) + THERMO_WEIGHT * bool(self.thermo) + LABEL_WEIGHT * bool(self.names)
+
+    def source_weights(self):
+        """How much of the evidence each source gave."""
+        weights = collections.Counter()
+        for sources in self.reactions.values():
+            weights.update(sources)
+        weights.update({source: THERMO_WEIGHT for source in self.thermo})
+        for source in self.names:
+            weights[source] += LABEL_WEIGHT
+        return weights
+
+    def main_source(self):
+        """The source that gave the most evidence (the first by name if several gave as much)."""
+        weights = self.source_weights()
+        return min(weights, key=lambda source: (-weights[source], source)) if weights else None
+
+
+def copied_chemistry(index, species, reactions, identified=None, blocked=()):
+    """
+    Candidates for the unidentified species, from the chemistry that the mechanism being imported
+    has in common with the sources in the index. Nothing needs to be identified first.
+        species     {label: (formula, thermo values or None)} for every CHEMKIN species
+        reactions   [(reaction id, reactant labels, product labels, rate fingerprint or None)]
+        identified  {label: structure key} for the species identified so far. They get no
+                    candidates, their structures can't be another label's, and a library reaction
+                    that pairs one of them with a different structure isn't counted.
+        blocked     {(label, structure key)} for matches that were blocked
+    A library reaction with the same formulas, written the same way round, and the same rate
+    constants was copied, so its species pair up with the CHEMKIN reaction's by formula. Thermo
+    entries with the same formula and values were copied too, and a source that gives a structure
+    of the right formula the same name adds a little.
+    Returns {label: [CopiedCandidate]} for the unidentified labels that have any, best first.
+    """
+    identified = identified or {}
+    taken = set(identified.values())
+    formula_of_label = {label: formula for label, (formula, _) in species.items()}
+    candidates = collections.defaultdict(dict)
+
+    def candidate(label, key):
+        if label in identified or key in taken or (label, key) in blocked:
+            return None
+        if key not in candidates[label]:
+            candidates[label][key] = CopiedCandidate(key)
+        return candidates[label][key]
+
+    wanted = collections.defaultdict(list)
+    for reaction_id, reactants, products, rate in reactions:
+        labels = list(reactants) + list(products)
+        if not rate or any(label not in formula_of_label for label in labels) or all(l in identified for l in labels):
+            continue
+        signature = formula_signature([formula_of_label[l] for l in reactants], [formula_of_label[l] for l in products])
+        wanted[signature].append((reaction_id, reactants, products, rate))
+    rows = index.reactions_for_signatures(wanted)
+    formula_of_key = index.formulas({key for row in rows for key in row[3] + row[4]})
+    for source, _, signature, lib_reactants, lib_products, lib_rate in rows:
+        for reaction_id, reactants, products, rate in wanted[signature]:
+            if not rates_match(rate, lib_rate):
+                continue
+            pairs = (pair_by_formula(reactants, lib_reactants, formula_of_label, formula_of_key) +
+                     pair_by_formula(products, lib_products, formula_of_label, formula_of_key))
+            if any(label in identified and identified[label] != key for label, key in pairs):
+                continue  # it pairs a species identified here with another structure
+            for label, key in pairs:
+                found = candidate(label, key)
+                if found is not None:
+                    found.reactions.setdefault(reaction_id, set()).add(source)
+
+    unidentified = [label for label in species if label not in identified]
+    by_formula = collections.defaultdict(list)
+    for label in unidentified:
+        if species[label][1]:
+            by_formula[species[label][0]].append(label)
+    for source, _, key, formula, values in index.thermo_for_formulas(by_formula):
+        for label in by_formula.get(formula, ()):
+            if thermo_copied(values, species[label][1]):
+                found = candidate(label, key)
+                if found is not None:
+                    found.thermo.add(source)
+
+    by_name = collections.defaultdict(list)
+    for label in unidentified:
+        by_name[label.upper()].append(label)
+    named = index.names_for_labels(unidentified)
+    formula_of_named = index.formulas({key for _, _, key in named})
+    for source, name, key in named:
+        for label in by_name.get(name.upper(), ()):
+            if formula_of_named.get(key) == formula_of_label[label]:
+                found = candidate(label, key)
+                if found is not None:
+                    found.names.add(source)
+
+    return {label: sorted(found.values(), key=lambda c: (-c.score, c.key))
+            for label, found in candidates.items() if found}
+
+
+def confident_proposals(candidates):
+    """
+    The labels whose best candidate is clear enough to propose: a score of at least
+    CONFIDENT_SCORE, more than the next candidate's, and not the best candidate of another label
+    too (two labels for one structure need a person to look).
+    Returns {label: CopiedCandidate}.
+    """
+    best_of = collections.Counter(found[0].key for found in candidates.values())
+    proposals = {}
+    for label, found in candidates.items():
+        top = found[0]
+        if (top.score >= CONFIDENT_SCORE and best_of[top.key] == 1 and
+                (len(found) == 1 or top.score > found[1].score)):
+            proposals[label] = top
+    return proposals
+
+
+################################################################################
 # Benchmark: hide each structure of each imported model, and see what the other sources say
 
 def benchmark(index_path, exclude_near_duplicates=False, min_sources=MIN_SOURCES):
@@ -632,6 +805,56 @@ def benchmark(index_path, exclude_near_duplicates=False, min_sources=MIN_SOURCES
     return hidden, covered, correct
 
 
+def benchmark_copied(index_path, exclude_near_duplicates=False):
+    """
+    Leave-one-model-out for copied chemistry, with nothing identified. For every imported model,
+    keep only what its CHEMKIN files give (formulas, rate constants, thermo and names), ask the
+    other sources with copied_chemistry, and compare with the structures the model was given.
+    Returns a Counter: species, candidate (has one), best_right (unique best is right),
+    confident (proposed by confident_proposals) and confident_right.
+    """
+    index = EvidenceIndex(index_path)
+    conn = index.conn
+    kinds = dict(conn.execute("SELECT id, kind FROM sources"))
+    formula_of = dict(conn.execute("SELECT key, formula FROM structures"))
+    reactions = collections.defaultdict(list)
+    for sid, r, p, rate in conn.execute("SELECT source_id, reactants, products, rate FROM reactions"):
+        reactions[sid].append((json.loads(r), json.loads(p), json.loads(rate) if rate else None))
+    thermo = collections.defaultdict(dict)
+    for sid, key, values in conn.execute("SELECT source_id, key, thermo_values FROM thermo"):
+        thermo[sid][key] = json.loads(values)
+    names = collections.defaultdict(dict)
+    for sid, label, key in conn.execute("SELECT source_id, label, key FROM names"):
+        names[sid].setdefault(key, label)
+    structural = {sid: {(tuple(sorted(r)), tuple(sorted(p))) for r, p, _ in rows} for sid, rows in reactions.items()}
+
+    totals = collections.Counter()
+    for sid in [s for s, kind in kinds.items() if kind == 'imported' and s in reactions]:
+        mine = structural[sid]
+        near = {o for o, theirs in structural.items() if o != sid and len(mine & theirs) > 0.5 * len(mine)}
+        index.excluded = {sid} | (near if exclude_near_duplicates else set())
+        label_of, used = {}, set()  # each hidden structure gets the model's name for it (unique), or its key
+        for key in sorted({k for r, p, _ in reactions[sid] for k in r + p} | set(thermo[sid])):
+            label = names[sid].get(key, key)
+            label_of[key] = label if label not in used else key
+            used.add(label_of[key])
+        species = {label: (formula_of[key], thermo[sid].get(key)) for key, label in label_of.items()}
+        found = copied_chemistry(index, species, [(i, [label_of[k] for k in r], [label_of[k] for k in p], rate)
+                                                  for i, (r, p, rate) in enumerate(reactions[sid])])
+        proposals = confident_proposals(found)
+        for key, label in label_of.items():
+            totals['species'] += 1
+            candidates = found.get(label)
+            if candidates:
+                totals['candidate'] += 1
+                totals['best_right'] += (candidates[0].key == key and
+                                         (len(candidates) == 1 or candidates[1].score < candidates[0].score))
+            if label in proposals:
+                totals['confident'] += 1
+                totals['confident_right'] += proposals[label].key == key
+    return totals
+
+
 ################################################################################
 
 def main():
@@ -642,6 +865,8 @@ def main():
     parser.add_argument('--models', help='the RMG-models directory with the imported models')
     parser.add_argument('--min_sources', type=int, default=MIN_SOURCES,
                         help='benchmark: sources needed when the rate constants differ (1 counts all evidence)')
+    parser.add_argument('--copied', action='store_true',
+                        help='benchmark: copied chemistry, with nothing identified, instead of library votes')
     args = parser.parse_args()
     logging.basicConfig(level=logging.ERROR, format='%(message)s')  # RMG logs a lot at INFO
     logger.setLevel(logging.INFO)
@@ -656,6 +881,16 @@ def main():
         print('sources: ' + ', '.join('{0} {1}'.format(n, kind) for kind, n in sorted(kinds.items())))
         print('{0} structures, {1} thermo entries, {2} reactions, {3:.0f} MB'.format(
             structures, thermo, reactions, os.path.getsize(args.index) / 1e6))
+    elif args.copied:
+        for exclude in (False, True):
+            started = time.time()
+            t = benchmark_copied(args.index, exclude_near_duplicates=exclude)
+            print('{0}: {1} species, {2:.1%} get a candidate, {3:.1%} of those have the right one on top; '
+                  '{4} ({5:.1%}) confident proposals, {6:.2%} of them right ({7:.0f} s)'.format(
+                      'without near-duplicate models' if exclude else 'all other sources',
+                      t['species'], t['candidate'] / max(t['species'], 1), t['best_right'] / max(t['candidate'], 1),
+                      t['confident'], t['confident'] / max(t['species'], 1),
+                      t['confident_right'] / max(t['confident'], 1), time.time() - started))
     else:
         print('Counting evidence with matching rate constants, or from at least {0} source(s)'.format(
             args.min_sources))
