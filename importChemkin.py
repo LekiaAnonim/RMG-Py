@@ -3950,7 +3950,9 @@ $('#copied_count').html("("+json.copied+")");
 <li><a href="thermomatches.html">Unconfirmed thermodynamics matches.</a> <span id="thermomatches_count"></span></li>
 <li><a href="thermomatchesmodel.html">Unconfirmed thermodynamics matches (select by model)</a></li>
 <li><a href="thermolibraries.html">Loaded thermodynamics libraries.</a></li>
-<li><a href="ThermoLibrary.py">Download thermo library.</a></li>
+<li>Download the libraries: <a href="ThermoLibrary.py">thermo library</a> (ThermoLibrary.py),
+    <a href="reactions.py">reaction library</a> (reactions.py) and its
+    <a href="dictionary.txt">species dictionary</a> (dictionary.txt).</li>
 </ul>
         """]
         
@@ -4578,6 +4580,18 @@ $('#copied_count').html("("+json.copied+")");
     def ThermoLibrary_py(self):
         """The thermo database in py format"""
         return serve_file(os.path.join(self.output_path, 'RMG-Py-thermo-library', 'ThermoLibrary.py'),
+                          content_type='application/octet-stream')
+
+    @cherrypy.expose
+    def reactions_py(self):
+        """The reaction library (the identified CHEMKIN reactions) in py format"""
+        return serve_file(os.path.join(self.output_path, 'RMG-Py-kinetics-library', 'reactions.py'),
+                          content_type='application/octet-stream')
+
+    @cherrypy.expose
+    def dictionary_txt(self):
+        """The species dictionary (adjacency lists) that goes with the reaction library"""
+        return serve_file(os.path.join(self.output_path, 'RMG-Py-kinetics-library', 'dictionary.txt'),
                           content_type='application/octet-stream')
 
     @cherrypy.expose
