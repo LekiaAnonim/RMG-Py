@@ -61,6 +61,7 @@ from rmgpy.molecule.draw import MoleculeDrawer
 
 import time
 import sys
+import evidence_index
 # Put the RMG-database project at the start of the python path, so we use that import_old_database script!
 database_dictionary = rmgpy.settings['database.directory']
 database_project_directory = os.path.abspath(os.path.join(database_dictionary, '..'))
@@ -127,6 +128,31 @@ class ReactionPlaceholder:
         if isinstance(other, ReactionPlaceholder):
             return self.reaction_str == other.reaction_str and self.family == other.family
         return False
+
+
+class LibraryReactionVote(ReactionPlaceholder):
+    """
+    A vote from a library reaction in the evidence index: an earlier import, or an RMG-database
+    library, has this reaction with known structures. Its family starts with 'library:', so these
+    votes can be told apart from RMG-generated ones, also when they are restored after a restart.
+    """
+
+    def __init__(self, reaction_str, sources, rate_match):
+        shown = ', '.join(sources[:3]) + (' and {0} more'.format(len(sources) - 3) if len(sources) > 3 else '')
+        super().__init__(reaction_str, 'library: ' + shown + ('; same rate constants' if rate_match else ''))
+        self.sources = list(sources)
+        self.rate_match = rate_match
+
+    @classmethod
+    def from_evidence(cls, evidence):
+        """One vote from the evidence that one CHEMKIN reaction gives for one candidate."""
+        sources = sorted({source for e in evidence for source in e['sources']})
+        return cls(evidence[0]['label'], sources, any(e['rate_match'] for e in evidence))
+
+
+def is_library_vote(reaction):
+    """True for votes that came from the evidence index (also when restored after a restart)."""
+    return str(getattr(reaction, 'family', '')).startswith('library:')
 
 
 ################################################################################
@@ -240,6 +266,11 @@ def parse_command_line_arguments():
               "connections from this machine (e.g. through nginx); use 0.0.0.0 when "
               "it must be reached from another host, such as through an SSH tunnel "
               "to a cluster node"))
+    parser.add_argument(
+        '--evidence_index',
+        default=os.environ.get('RMG_EVIDENCE_INDEX', ''),
+        help=("an evidence index built by evidence_index.py, so the RMG-database libraries and earlier "
+              "imports in RMG-models vote too. Defaults to the RMG_EVIDENCE_INDEX environment variable"))
     parser.add_argument(
         '--quit_when_exhausted',
         action='store_true',
@@ -394,6 +425,11 @@ class ModelMatcher():
         self.thermo_matches = {}
         self.thermo_libraries_to_check = []
         self.blocked_matches = {}
+        self.evidence = None
+        """The evidence index (evidence_index.EvidenceIndex), if one is used"""
+        self.structure_keys = {}  # identified label -> evidence-index structure key
+        self.library_candidates = {}  # structure key -> RMG species proposed by the evidence index
+        self.chemkin_rate_fingerprints = {}  # CHEMKIN reaction index -> rate fingerprint
         """A dictionary of matches forbidden manually. blocked_matches[ck_label][rmg Species] = username (or None)"""
         self.already_processed_labels = set()
         """A set of chemkin labels that have already been fully processed (limit_enlarge completed).
@@ -1458,29 +1494,33 @@ class ModelMatcher():
 
         self.thermo_libraries_to_check.extend(rmg.database.thermo.library_order) # add the RMG libraries
         
-        # Should probably look elsewhere, but this is where they tend to be for now...
-        directory = os.path.abspath(os.path.join(os.path.split(os.path.abspath(args.thermo))[0], '..'))
-        # if that's some subfolder of RMG-models, move up to RMG-models level
-        if directory.find('RMG-models'):
-            directory = directory[:directory.find('RMG-models')]+'RMG-models'
-        logging.info("Looking in {dir} for additional thermo libraries to import".format(dir=directory))
-        for root, dirs, files in os.walk(directory):
-            for filename in files:
-                if not filename == 'ThermoLibrary.py':
-                    continue
-                path = os.path.join(root, filename)
-                logging.info("I think I found a thermo library at {0}".format(path))
-                if os.path.abspath(path).startswith(os.path.split(os.path.abspath(args.thermo))[0]):
-                    logging.info("But it's the model currently being imported, so not loading.")
-                    break
-                library = rmgpy.data.thermo.ThermoLibrary()
-                library.SKIP_DUPLICATES = True
-                library.load(path, rmg.database.thermo.local_context, rmg.database.thermo.global_context)
-                library.label = root.split('/')[-2]
-                rmg.database.thermo.libraries[library.label] = library
-                # Load them (for the check_thermo_libraries method) but don't trust them
-                self.thermo_libraries_to_check.append(library.label)
-                # rmg.database.thermo.library_order.append(library.label)
+        if self.args.evidence_index and os.path.exists(self.args.evidence_index):
+            logging.info("Earlier imports' thermo libraries come from the evidence index {0}, "
+                         "so not loading them one by one".format(self.args.evidence_index))
+        else:
+            # Should probably look elsewhere, but this is where they tend to be for now...
+            directory = os.path.abspath(os.path.join(os.path.split(os.path.abspath(args.thermo))[0], '..'))
+            # if that's some subfolder of RMG-models, move up to RMG-models level
+            if directory.find('RMG-models'):
+                directory = directory[:directory.find('RMG-models')]+'RMG-models'
+            logging.info("Looking in {dir} for additional thermo libraries to import".format(dir=directory))
+            for root, dirs, files in os.walk(directory):
+                for filename in files:
+                    if not filename == 'ThermoLibrary.py':
+                        continue
+                    path = os.path.join(root, filename)
+                    logging.info("I think I found a thermo library at {0}".format(path))
+                    if os.path.abspath(path).startswith(os.path.split(os.path.abspath(args.thermo))[0]):
+                        logging.info("But it's the model currently being imported, so not loading.")
+                        break
+                    library = rmgpy.data.thermo.ThermoLibrary()
+                    library.SKIP_DUPLICATES = True
+                    library.load(path, rmg.database.thermo.local_context, rmg.database.thermo.global_context)
+                    library.label = root.split('/')[-2]
+                    rmg.database.thermo.libraries[library.label] = library
+                    # Load them (for the check_thermo_libraries method) but don't trust them
+                    self.thermo_libraries_to_check.append(library.label)
+                    # rmg.database.thermo.library_order.append(library.label)
 
         rmg.reaction_model = rmgpy.rmg.model.CoreEdgeReactionModel()
         rmg.reaction_model.kinetics_estimator = 'rate rules'
@@ -2058,6 +2098,8 @@ class ModelMatcher():
 
                             logging.info("Thermo match found for chemkin species {0} in thermo library {1}".format(ck_label, library_name))
                             self.set_thermo_match(ck_label, rmg_species, library_name, entry.label)
+
+        self.check_evidence_thermo()
 
     def save_blocked_match_to_file(self, ck_label, rmg_species, username=None):
         """
@@ -2880,6 +2922,7 @@ class ModelMatcher():
         logging.info("Initializing RMG")
         self.initializeRMG(args)
         rm = self.rmg_object.reaction_model
+        self.open_evidence_index()
         self.dictionary_file = os.path.join(args.output_directory, 'MatchedSpeciesDictionary.txt')
         self.RMGdictionaryFile = os.path.join(args.output_directory, 'Original_RMG_dictionary.txt')
 
@@ -2998,6 +3041,10 @@ class ModelMatcher():
         # This must happen before any new species is processed, so new species react with them.
         self.restore_processed_species_to_core()
 
+        # Votes from library reactions in the evidence index, and the tentative matches they give
+        if self.refresh_library_votes():
+            self.propose_tentative_matches(self.prune_voting())
+
         if not self.identified_unprocessed_labels:
             # Nothing new to process, e.g. every identified species was processed in an
             # earlier run. Wait for a match from the web front end; the loop below then
@@ -3050,6 +3097,11 @@ class ModelMatcher():
             if len(self.identified_unprocessed_labels) == 0:
                 logging.info("** Running out of things to process!")
 
+            # Library votes depend on what is identified, so refresh them; if there are no RMG
+            # reactions to check, act on them now rather than waiting for the next species
+            if self.refresh_library_votes() and not reactions_to_check:
+                self.propose_tentative_matches(self.prune_voting())
+
             while reactions_to_check:
                 self.check_reactions_for_matches(reactions_to_check)
                 # Have just checked all those reactions, so clear the reactions_to_check,
@@ -3062,23 +3114,7 @@ class ModelMatcher():
 
                 self.draw_all_candidate_species()
 
-                new_matches = []
-                for chemkin_label, possible_matches in pruned_votes.items():
-                    if len(possible_matches) == 1:
-                        matching_species, voting_reactions = list(possible_matches.items())[0]
-                        logging.info("\n_only one suggested match for {0}: {1!s}".format(chemkin_label, matching_species))
-                        display(matching_species)
-                        logging.info("With {0} unique voting reactions:".format(len(voting_reactions)))
-                        for reaction in voting_reactions:
-                            logging.info("  {0!s}".format(reaction))
-                        all_possible_chemkin_species = [ck for ck, matches in pruned_votes.items() if matching_species in matches]
-                        if len(all_possible_chemkin_species) == 1:
-                            logging.info("Only one chemkin species has this match (after pruning).")
-                            self.set_tentative_match(chemkin_label, matching_species)
-                            #new_matches.append((chemkin_label, matching_species))
-                        else:
-                            logging.info("Other Chemkin species that also match {0} (after pruning) are {1!r}".format(matching_species.label, all_possible_chemkin_species))
-                            logging.info("Will not make match at this time.")
+                new_matches = self.propose_tentative_matches(pruned_votes)
 
                 for chemkin_label, matching_species in new_matches:
                     invalidated_reactions = self.get_invalidated_reactions_and_remove_votes(
@@ -3172,6 +3208,192 @@ class ModelMatcher():
 
         if hasattr(self, 'vote_db') and self.vote_db:
             self.vote_db.close()
+
+    def propose_tentative_matches(self, pruned_votes):
+        """
+        Propose a tentative match for every label whose pruned votes leave exactly one candidate
+        that no other label also has. Returns the matches to make automatically, which is
+        always empty: every match is confirmed by a person.
+        """
+        new_matches = []
+        for chemkin_label, possible_matches in pruned_votes.items():
+            if len(possible_matches) == 1:
+                matching_species, voting_reactions = list(possible_matches.items())[0]
+                logging.info("\n_only one suggested match for {0}: {1!s}".format(chemkin_label, matching_species))
+                display(matching_species)
+                logging.info("With {0} unique voting reactions:".format(len(voting_reactions)))
+                for reaction in voting_reactions:
+                    logging.info("  {0!s}".format(reaction))
+                all_possible_chemkin_species = [ck for ck, matches in pruned_votes.items() if matching_species in matches]
+                if len(all_possible_chemkin_species) == 1:
+                    logging.info("Only one chemkin species has this match (after pruning).")
+                    self.set_tentative_match(chemkin_label, matching_species)
+                    #new_matches.append((chemkin_label, matching_species))
+                else:
+                    logging.info("Other Chemkin species that also match {0} (after pruning) are {1!r}".format(matching_species.label, all_possible_chemkin_species))
+                    logging.info("Will not make match at this time.")
+        return new_matches
+
+    def open_evidence_index(self):
+        """
+        Open the evidence index (see evidence_index.py) given with --evidence_index or
+        RMG_EVIDENCE_INDEX. This model's own libraries are left out of every answer.
+        """
+        path = self.args.evidence_index
+        if not path:
+            return
+        if not os.path.exists(path):
+            logging.warning("Evidence index {0} not found, so carrying on without library evidence".format(path))
+            return
+        model_directory = os.path.dirname(os.path.abspath(self.args.thermo))
+        self.evidence = evidence_index.EvidenceIndex(path, exclude_paths=[model_directory])
+        kinds, (n_thermo, n_reactions, n_structures) = self.evidence.counts()
+        logging.info("Evidence index {0}: {1} sources ({2}), {3} reactions, {4} thermo entries; "
+                     "leaving out {5} source(s) of this model".format(
+                         path, sum(kinds.values()), ', '.join('{1} {0}'.format(k, n) for k, n in sorted(kinds.items())),
+                         n_reactions, n_thermo, len(self.evidence.excluded)))
+
+    def structure_key_for_label(self, label):
+        """The evidence-index structure key of an identified species, or None if it can't be made."""
+        if label not in self.structure_keys:
+            try:
+                self.structure_keys[label] = evidence_index.structure_key(self.species_dict_rmg[label].molecule[0])
+            except Exception:
+                self.structure_keys[label] = None
+        return self.structure_keys[label]
+
+    def _library_candidate(self, key):
+        """
+        The RMG species for a structure the evidence index proposes, made the first time it is
+        needed (with RMG's thermo estimate, like RMG-generated candidates) and then reused.
+        None if RMG can't make it.
+        """
+        if key not in self.library_candidates:
+            species = None
+            structure = self.evidence.structures([key]).get(key)
+            if structure:
+                try:
+                    molecule = Molecule().from_adjacency_list(structure[2])
+                    species, _ = self.rmg_object.reaction_model.make_new_species(molecule)
+                    if species.thermo is None:
+                        species.thermo = generate_thermo_data(species)
+                except Exception as e:
+                    logging.warning("Couldn't make an RMG species for {0} from the evidence index: {1}".format(
+                        structure[1], e))
+                    species = None
+            self.library_candidates[key] = species
+        return self.library_candidates[key]
+
+    def _chemkin_rate(self, index, reaction):
+        """Rate fingerprint of a CHEMKIN reaction (see evidence_index.rate_fingerprint), cached."""
+        if index not in self.chemkin_rate_fingerprints:
+            kinetics = getattr(reaction, 'kinetics', None)
+            self.chemkin_rate_fingerprints[index] = evidence_index.rate_fingerprint(kinetics) if kinetics else None
+        return self.chemkin_rate_fingerprints[index]
+
+    def _library_vote_pairs(self):
+        """(label, candidate, CHEMKIN reaction) for every vote that came from the evidence index."""
+        return {(label, species, id(pair[0]))
+                for label, candidates in self.votes.items()
+                for species, pairs in candidates.items()
+                for pair in pairs if is_library_vote(pair[1])}
+
+    def _remove_library_votes(self):
+        """Remove the votes from the evidence index, including any restored from the vote database."""
+        for label in list(self.votes):
+            candidates = self.votes[label]
+            for species in list(candidates):
+                kept = {pair for pair in candidates[species] if not is_library_vote(pair[1])}
+                if kept:
+                    candidates[species] = kept
+                else:
+                    del candidates[species]
+            if not candidates:
+                del self.votes[label]
+
+    def refresh_library_votes(self):
+        """
+        Recompute the votes that come from library reactions in the evidence index. A CHEMKIN
+        reaction with an unidentified species votes for a structure when an earlier import or
+        an RMG-database library has the same reaction, with the species identified here in the
+        other places. These are lookups, not RMG reaction generation, so this is fast; RMG's
+        reaction families still generate, and vote for, structures that no library has.
+        Returns True if the library votes changed.
+        """
+        if not self.evidence:
+            return False
+        started = time.time()
+        before = self._library_vote_pairs()
+        self._remove_library_votes()
+
+        identified = set(self.identified_labels)
+        reactions = []
+        for index, reaction in enumerate(self.chemkin_reactions):
+            sides, usable = [], True
+            for side in (reaction.reactants, reaction.products):
+                entries = []
+                for species in side:
+                    label = species.label
+                    formula = self.formula_dict.get(label)
+                    known = self.structure_key_for_label(label) if label in identified else None
+                    if formula is None or (label in identified and known is None):
+                        usable = False
+                        break
+                    entries.append((label, known, formula))
+                if not usable:
+                    break
+                sides.append(entries)
+            if usable and any(known is None for side in sides for _, known, _ in side):
+                reactions.append((index, sides[0], sides[1], self._chemkin_rate(index, reaction)))
+
+        taken = {self.structure_key_for_label(label) for label in identified}
+        n_votes, n_labels = 0, 0
+        for label, candidates in evidence_index.library_votes(self.evidence, reactions).items():
+            voted = False
+            for key, by_reaction in candidates.items():
+                if key in taken:
+                    continue  # already identified as another label
+                species = self._library_candidate(key)
+                if species is None or species in self.blocked_matches.get(label, {}):
+                    continue
+                for index, evidence in by_reaction.items():
+                    pair = (self.chemkin_reactions[index], LibraryReactionVote.from_evidence(evidence))
+                    self.votes.setdefault(label, {}).setdefault(species, set()).add(pair)
+                    n_votes += 1
+                    voted = True
+            n_labels += voted
+        changed = self._library_vote_pairs() != before
+        logging.info("Library evidence: {0} votes for {1} unidentified species, from {2} CHEMKIN reactions "
+                     "that contain one ({3:.1f} s)".format(n_votes, n_labels, len(reactions), time.time() - started))
+        return changed
+
+    def check_evidence_thermo(self):
+        """
+        Thermo matches from the evidence index: every RMG-database thermo library and every
+        earlier import's thermo library, compared as in check_thermo_libraries (which already
+        covers the RMG libraries loaded into RMG, so those are skipped here).
+        """
+        if not self.evidence:
+            return
+        loaded = {'rmg-database/thermo/' + name for name in self.rmg_object.database.thermo.library_order}
+        labels_by_formula = {}
+        for label, formula in self.formula_dict.items():
+            if label not in self.identified_labels:
+                labels_by_formula.setdefault(formula, []).append(label)
+        chemkin_values, found = {}, 0
+        for source, entry_label, key, formula, values in self.evidence.thermo_for_formulas(labels_by_formula):
+            if source in loaded:
+                continue
+            for ck_label in labels_by_formula.get(formula, []):
+                if ck_label not in chemkin_values:
+                    chemkin_values[ck_label] = evidence_index.thermo_values(self.thermo_dict[ck_label])
+                if evidence_index.thermo_values_match(values, chemkin_values[ck_label]):
+                    species = self._library_candidate(key)
+                    if species is not None:
+                        logging.info("Thermo match found for chemkin species {0} in {1}".format(ck_label, source))
+                        self.set_thermo_match(ck_label, species, source, entry_label)
+                        found += 1
+        logging.info("Evidence index: {0} thermo matches for unidentified species".format(found))
 
     def restore_processed_species_to_core(self):
         """
@@ -3772,7 +3994,14 @@ $('#thermomatches_count').html("("+json.thermomatches+")");
             library = self.rmg_object.database.thermo.libraries[library_name]
             library_length = len(library.entries)
             output.append('<li>{name} ({num})</li>'.format(name=library_name, num=library_length))
-        output.append('</ul>'+self.html_tail)
+        output.append('</ul>')
+        if self.evidence:
+            kinds, (n_thermo, n_reactions, n_structures) = self.evidence.counts()
+            output.append('<h2>Evidence index</h2><p>{0} thermo entries and {1} reactions from {2} sources '
+                          '({3}), checked for every unidentified species.</p>'.format(
+                              n_thermo, n_reactions, sum(kinds.values()),
+                              ', '.join('{1} {0}'.format(k, n) for k, n in sorted(kinds.items()))))
+        output.append(self.html_tail)
         return ('\n'.join(output))
 
     @cherrypy.expose
