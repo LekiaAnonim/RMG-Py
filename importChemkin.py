@@ -751,7 +751,15 @@ class ModelMatcher():
                     rmg_smiles = species_data.get('rmg_species_smiles') or species_data.get('smiles')
                     if rmg_smiles and chemkin_label not in self.species_dict_rmg:
                         try:
-                            molecule = Molecule(smiles=rmg_smiles)
+                            molecule = molecule_from_known_smiles(rmg_smiles)
+                            # load_known_species checks SMILES.txt formulas; check these too, since a
+                            # stored SMILES can read back as another molecule (C=C=[CH] for C3H is C3H3)
+                            formula = self.formula_dict.get(chemkin_label)
+                            if formula and molecule.get_formula() != formula:
+                                logging.warning("Not restoring {0} = {1} from the vote database: that is {2}, but {0} "
+                                                "is {3}. Identify it again.".format(
+                                                    chemkin_label, rmg_smiles, molecule.get_formula(), formula))
+                                continue
                             rmg_species, was_new = self.rmg_object.reaction_model.make_new_species(molecule)
                             if was_new:
                                 rmg_species.generate_resonance_structures()
