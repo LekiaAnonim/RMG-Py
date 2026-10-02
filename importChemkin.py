@@ -270,21 +270,69 @@ SPECIAL_SMILES = {
     }
 
 
+# A SMILES with one of these in front states the molecule's spin, e.g. singletC[C]F
+SPINS = {'singlet': 1, 'doublet': 2, 'triplet': 3}
+
+
+def with_multiplicity(molecule, multiplicity, name=''):
+    """
+    Give a molecule read from a SMILES this multiplicity, by pairing up unpaired electrons as
+    lone pairs: a SMILES can only write a carbene's two non-bonding electrons as unpaired, so
+    C[C]F reads as the triplet, and the singlet needs them as a lone pair. Raises ValueError if
+    the molecule can't have that multiplicity.
+    """
+    while molecule.get_radical_count() + 1 > multiplicity:
+        atom = next((a for a in molecule.atoms if a.radical_electrons >= 2 and a.charge == 0), None)
+        if atom is None:
+            break
+        atom.radical_electrons -= 2
+        atom.lone_pairs += 1
+    if molecule.get_radical_count() + 1 != multiplicity:
+        raise ValueError("{0} can't have multiplicity {1}".format(name or molecule.to_smiles(), multiplicity))
+    molecule.update()
+    return molecule
+
+
 def molecule_from_known_smiles(smiles):
-    """The molecule that a SMILES in SMILES.txt stands for, special names included (SPECIAL_SMILES)."""
+    """
+    The molecule that a SMILES in SMILES.txt stands for: a special name in SPECIAL_SMILES, a
+    SMILES with its spin in front (singletC[C]F, doublet[C]=C=[CH], tripletC[C]F), or a SMILES.
+    """
     if smiles in SPECIAL_SMILES:
         return Molecule().from_adjacency_list(SPECIAL_SMILES[smiles])
+    for spin, multiplicity in SPINS.items():
+        if smiles.startswith(spin):
+            return with_multiplicity(Molecule(smiles=smiles[len(spin):]), multiplicity, smiles)
     return Molecule(smiles=smiles)
 
 
 def known_smiles_for(molecule):
     """
-    What to write in SMILES.txt for a molecule: its SMILES if that reads back as the same
-    molecule, else the special name that does (singlet[CH2], since [CH2] reads back as triplet
-    methylene), else its SMILES anyway.
+    What to write in SMILES.txt for a molecule: the first of these that reads back as the same
+    molecule, with the same spin:
+      - its SMILES
+      - a special name (singlet[CH2], since [CH2] reads back as triplet methylene)
+      - its spin in front of a SMILES that writes the carbon lone pairs as unpaired electrons
+        (singletC[C]F; doublet[C]=C=[CH], since RMG writes that C3H radical as C=C=[CH], which
+        reads back as C3H3)
+    and otherwise its SMILES anyway.
     """
     smiles = molecule.to_smiles()
-    for candidate in [smiles] + list(SPECIAL_SMILES):
+    candidates = [smiles] + list(SPECIAL_SMILES)
+    spin = {multiplicity: name for name, multiplicity in SPINS.items()}.get(molecule.multiplicity)
+    if spin:
+        unpaired = molecule.copy(deep=True)
+        for atom in unpaired.atoms:
+            if atom.is_carbon() and atom.charge == 0 and atom.lone_pairs > 0:
+                atom.radical_electrons += 2 * atom.lone_pairs
+                atom.lone_pairs = 0
+        try:
+            unpaired.update(raise_atomtype_exception=False)
+            candidates.append(spin + unpaired.to_smiles())
+        except Exception:
+            pass
+        candidates.append(spin + smiles)
+    for candidate in candidates:
         try:
             back = molecule_from_known_smiles(candidate)
         except Exception:
@@ -292,6 +340,40 @@ def known_smiles_for(molecule):
         if back.multiplicity == molecule.multiplicity and back.is_isomorphic(molecule):
             return candidate
     return smiles
+
+
+def states_spin(smiles):
+    """True if a SMILES.txt entry states the spin: a special name, or a spin in front of a SMILES."""
+    return smiles in SPECIAL_SMILES or any(smiles.startswith(spin) for spin in SPINS)
+
+
+def forbidden_entry(forbidden_structures, molecule):
+    """The label of the first entry of RMG's forbidden structures that matches the molecule, or None."""
+    from rmgpy.molecule.group import Group
+    for label, entry in forbidden_structures.entries.items():
+        item = entry.item
+        if isinstance(item, Group):
+            if molecule.is_subgraph_isomorphic(item, generate_initial_map=True):
+                return label
+        elif item.is_isomorphic(molecule):
+            return label
+    return None
+
+
+def put_allowed_form_first(species, forbidden_structures):
+    """
+    RMG checks only a species' first resonance structure against its forbidden structures. If
+    that one is forbidden and another isn't, move the allowed one to the front. Returns the
+    resonance structure that was moved, or None.
+    """
+    if not forbidden_structures.is_molecule_forbidden(species.molecule[0]):
+        return None
+    for molecule in species.molecule[1:]:
+        if not forbidden_structures.is_molecule_forbidden(molecule):
+            species.molecule.remove(molecule)
+            species.molecule.insert(0, molecule)
+            return molecule
+    return None
 
 
 ################################################################################
@@ -900,7 +982,7 @@ class ModelMatcher():
         if smiles in smiles_to_species:
             species = smiles_to_species[smiles]
         else:
-            molecule = Molecule(smiles=smiles)
+            molecule = molecule_from_known_smiles(smiles)  # a SMILES.txt entry, maybe singlet[CH2] etc.
             species, was_new = self.rmg_object.reaction_model.make_new_species(molecule)
             if was_new:
                 species.generate_resonance_structures()
@@ -1428,7 +1510,6 @@ class ModelMatcher():
             with open(known_species_file, 'a') as f:
                 f.write('\n')
 
-        special_smiles_to_adj_list = SPECIAL_SMILES
 
         for species_label in known_names:
             if species_label not in self.formula_dict:
@@ -1436,15 +1517,11 @@ class ModelMatcher():
                 continue
             formula = self.formula_dict[species_label]
             smiles = known_smiles[species_label]
-            if smiles in special_smiles_to_adj_list:
-                adjlist = special_smiles_to_adj_list[smiles]
-                molecule = Molecule()
-                try:
-                    molecule.from_adjacency_list(adjlist)
-                except:
-                    logging.exception(adjlist)
-            else:
-                molecule = Molecule(smiles=smiles)
+            try:
+                molecule = molecule_from_known_smiles(smiles)  # special names, and singletC[C]F etc.
+            except Exception:
+                logging.exception("Can't read {0} {1} in {2}".format(species_label, smiles, known_species_file))
+                raise
             if formula != molecule.get_formula():
                 raise Exception("{0} cannot be {1} because the SMILES formula is {2} not required formula {3}. \n{4}".format(species_label, smiles, molecule.get_formula(), formula, molecule.to_adjacency_list()))
             logging.info("I think {0} is {1} based on its label".format(species_label, smiles))
@@ -3100,6 +3177,7 @@ class ModelMatcher():
             logging.info("Processing species {0}...".format(label_to_process))
 
             # Add species to RMG core.
+            self.allow_into_core(label_to_process)
             self.limit_enlarge(self.species_dict_rmg[label_to_process])
 
             # do a partial prune of new reactions that definitely aren't going to be useful
@@ -3578,6 +3656,40 @@ class ModelMatcher():
                         found += 1
         logging.info("Evidence index: {0} thermo matches for unidentified species".format(found))
 
+    def allow_into_core(self, label):
+        """
+        Before an identified species goes into the core, make sure RMG's forbidden structures
+        don't keep it out: species in the edge that match them are dropped instead, and then no
+        later species reacts with it. RMG checks only the first resonance structure, so a
+        forbidden one is swapped for an allowed one if the species has one ([C]#C[O] for CCO).
+        A structure forbidden in every form is usually the wrong spin state (CH3CF confirmed as
+        the triplet C[C]F, when fluorocarbenes are singlets), so it is let in only if SMILES.txt
+        states its spin (triplet[CH]O, tripletC[C]F); otherwise the log says how to fix it.
+        """
+        species = self.species_dict_rmg[label]
+        forbidden = self.rmg_object.database.forbidden_structures
+        if species.explicitly_allowed or not forbidden.is_molecule_forbidden(species.molecule[0]):
+            return
+        entry = forbidden_entry(forbidden, species.molecule[0])
+        moved = put_allowed_form_first(species, forbidden)
+        if moved is not None:
+            logging.info("{0}: RMG forbids the resonance structure {1} ({2}), so using {3}".format(
+                label, species.molecule[1].to_smiles(), entry, moved.to_smiles()))
+            return
+        written = self.smiles_dict.get(label, '')
+        if states_spin(written):
+            species.explicitly_allowed = True
+            logging.info("{0} = {1} matches RMG's forbidden structure {2}, but SMILES.txt states its spin, "
+                         "so it goes into the core anyway".format(label, written, entry))
+            return
+        plain = species.molecule[0].to_smiles()
+        logging.warning(
+            "{0} = {1} matches RMG's forbidden structure {2}, so if it comes from the edge RMG keeps it out "
+            "of the core, and no later species reacts with it. This is usually the wrong spin: if {0} is a "
+            "singlet, identify it as singlet{3}; if this spin is right, write it in SMILES.txt as {4}{3} "
+            "and restart.".format(label, written or plain, entry, plain,
+                                  {1: 'singlet', 2: 'doublet', 3: 'triplet'}.get(species.molecule[0].multiplicity, '')))
+
     def restore_processed_species_to_core(self):
         """
         On a restart, put the species processed in an earlier run back in the RMG core.
@@ -3598,6 +3710,7 @@ class ModelMatcher():
             self.identified_unprocessed_labels.remove(label)
             species = self.species_dict_rmg[label]
             if species not in rm.core.species:
+                self.allow_into_core(label)
                 rm.add_species_to_core(species)
         logging.info("RESTART: put {0} species processed in an earlier run back in the core "
                      "without generating their reactions again".format(len(restored)))
@@ -3879,7 +3992,7 @@ $('#copied_count').html("("+json.copied+")");
             return img(spec)
         return (self.html_head() + 
         f"""<h1>{len(self.identified_labels)} Identified Species</h1>
-        <form action="/deletemistakes.html" method="get">
+        <form action="deletemistakes.html" method="get">
         <table style="width:500px"><tr>
         <th>#</th><th>Label</th><th>Molecule</th><th>Identified by</th><th>Delete?</th></tr>""" +
          "<tr>".join([
@@ -4002,7 +4115,7 @@ $('#copied_count').html("("+json.copied+")");
     def thermomatchesmodel_html(self, model=None, confirm=None):
         if model not in self.rmg_object.database.thermo.libraries:
             output = [self.html_head(), '<h1>Select model to find Thermochemistry Matches</h1>']
-            output.extend(['<form action="/thermomatchesmodel.html" method="get">', '<select name="model">'])
+            output.extend(['<form action="thermomatchesmodel.html" method="get">', '<select name="model">'])
             for library in self.rmg_object.database.thermo.libraries.keys():
                 output.append('  <option value="{lib}">{lib}</option>'.format(lib=library))
             output.extend([' </select>', '<input type="submit" />', '</form>'])
@@ -4862,7 +4975,7 @@ $('#copied_count').html("("+json.copied+")");
     @cherrypy.expose
     def edit_html(self, ck_label=None, smiles=None):
         smiles = str(smiles)
-        proposal = Molecule(smiles=str(smiles))
+        proposal = molecule_from_known_smiles(str(smiles))  # also takes singletC[C]F and special names
         species, isnew = self.rmg_object.reaction_model.make_new_species(proposal)
         species.generate_resonance_structures()
         self.draw_species(species)
@@ -4870,7 +4983,7 @@ $('#copied_count').html("("+json.copied+")");
             species.thermo = generate_thermo_data(species)
 
         # get a list of names from Cactus
-        url = "http://cactus.nci.nih.gov/chemical/structure/{0}/names".format(urllib.parse.quote(smiles))
+        url = "http://cactus.nci.nih.gov/chemical/structure/{0}/names".format(urllib.parse.quote(proposal.to_smiles()))
         try:
             f = urllib.request.urlopen(url, timeout=4)
             response = f.read()
