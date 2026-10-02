@@ -190,10 +190,25 @@ class TestIndex:
         assert set(votes) == {'X'}
         assert set(votes['X']) == {key('[CH3]')}
         evidence = votes['X'][key('[CH3]')]
-        assert set(evidence) == {7, 8}
+        assert set(evidence) == {7}  # 8 has one source and no comparable rate, so it doesn't vote
         assert evidence[7][0]['sources'] == ['Journal/Earlier']  # not Journal/Current
         assert evidence[7][0]['rate_match'] is True
+        evidence = ei.library_votes(idx, chemkin, min_sources=1)['X'][key('[CH3]')]
+        assert set(evidence) == {7, 8}
         assert evidence[8][0]['rate_match'] is False  # written backwards, so not comparable
+
+    def test_one_source_with_other_rates_needs_a_second_source(self, index):
+        path, models, earlier, current = index
+        k_h, k_ch4 = key('[H]'), key('C')
+        other_rate = ei.rate_fingerprint(Arrhenius(A=(3e14, 'cm^3/(mol*s)'), n=0, Ea=(0, 'kcal/mol'), T0=(1, 'K')))
+        chemkin = [(7, [('X', None, 'CH3'), ('H', k_h, 'H')], [('CH4', k_ch4, 'CH4')], other_rate)]
+        assert ei.library_votes(ei.EvidenceIndex(path, exclude_paths=[current]), chemkin) == {}
+        write_model(models, os.path.join('Journal', 'Another'))
+        assert ei.build(path, None, models, refresh=True) == 1
+        votes = ei.library_votes(ei.EvidenceIndex(path, exclude_paths=[current]), chemkin)
+        evidence = votes['X'][key('[CH3]')][7]
+        assert evidence[0]['sources'] == ['Journal/Another', 'Journal/Earlier']
+        assert evidence[0]['rate_match'] is False
 
     def test_refresh_rereads_only_changed_sources(self, index):
         path, models, earlier, current = index

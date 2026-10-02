@@ -21,6 +21,8 @@ The importer looks up only the reactions that can still say something: those who
 signature matches a CHEMKIN reaction containing an unidentified species. Matching them is a
 comparison of structure keys, with no RMG reaction generation. RMG's reaction families keep
 generating new reactions and species as before; this adds a second, labelled source of votes.
+A library reaction votes only when it is corroborated (see MIN_SOURCES): its rate constants
+match the CHEMKIN file's, or at least two sources have it.
 
 Commands:
     python evidence_index.py build     --index FILE --database DIR --models DIR
@@ -55,6 +57,15 @@ THERMO_TOLERANCE = 0.05
 RATE_TEMPERATURES = (500.0, 1000.0, 1500.0)
 RATE_PRESSURE = 1e5
 RATE_TOLERANCE = 0.01  # in log10 k, about 2%
+# A library reaction votes only if it is corroborated: its rate constants match the CHEMKIN
+# file's (the same reaction, copied from the same place), or at least this many sources have
+# it. A single source with other rate constants is often a coincidence of formulas, or a
+# mistake made in an earlier import. In the leave-one-model-out benchmark this trades a little
+# coverage for precision: 95.7% of hidden species get a candidate instead of 96.7%, and the
+# best candidate is right for 91.3% of those instead of 89.2% (without near-duplicate models:
+# 76.2% instead of 81.3%, and 86.1% instead of 83.0%). A wrong vote costs more than a missing
+# one, since RMG's reaction families still vote either way.
+MIN_SOURCES = 2
 
 SCHEMA = """
 CREATE TABLE meta (name TEXT PRIMARY KEY, value TEXT);
@@ -495,12 +506,18 @@ class EvidenceIndex:
         return self._formulas
 
 
-def library_votes(index, chemkin_reactions):
+def corroborated(evidence, min_sources=MIN_SOURCES):
+    """True if one CHEMKIN reaction's evidence for one candidate is enough to vote (see MIN_SOURCES)."""
+    return (any(e['rate_match'] for e in evidence)
+            or len({source for e in evidence for source in e['sources']}) >= min_sources)
+
+
+def library_votes(index, chemkin_reactions, min_sources=MIN_SOURCES):
     """
     Votes from library reactions, for CHEMKIN reactions given as
         (reaction id, reactants, products, rate fingerprint or None)
     where each side is a list of (label, known structure key or None, formula). Only reactions
-    with an unidentified species (known key None) can vote.
+    with an unidentified species (known key None) can vote, and only with corroborated evidence.
     Returns {label: {candidate key: {reaction id: [evidence]}}}, where each piece of evidence is
     a dict with the library reaction label, its sources, and whether the rate constants match.
     """
@@ -539,29 +556,38 @@ def library_votes(index, chemkin_reactions):
                 for (label, known, _), key in zip(reactants + products, r_keys + p_keys):
                     if known is None:
                         votes[label][key][reaction_id].append(evidence)
-    return votes
+
+    kept = {}
+    for label, candidates in votes.items():
+        for key, by_reaction in candidates.items():
+            for reaction_id, evidence in by_reaction.items():
+                if corroborated(evidence, min_sources):
+                    kept.setdefault(label, {}).setdefault(key, {})[reaction_id] = evidence
+    return kept
 
 
 ################################################################################
 # Benchmark: hide each structure of each imported model, and see what the other sources say
 
-def benchmark(index_path, exclude_near_duplicates=False):
+def benchmark(index_path, exclude_near_duplicates=False, min_sources=MIN_SOURCES):
     """
     For every imported model and every structure in its reactions: pretend that one species is
     unidentified (all others known) and ask the other sources about the model's reactions that
-    contain it. Coverage is the share of species that get a candidate; precision the share of
-    those whose best-supported candidate is the right structure.
+    contain it, counting only evidence that would vote in the importer (the model's own rate
+    constants stand in for the CHEMKIN file's). Coverage is the share of species that get a
+    candidate; precision the share of those whose best-supported candidate is the right structure.
     """
     conn = sqlite3.connect('file:{0}?mode=ro'.format(index_path), uri=True)
     sources = {sid: (name, kind) for sid, name, kind in conn.execute("SELECT id, name, kind FROM sources")}
     formula_of = dict(conn.execute("SELECT key, formula FROM structures"))
     by_source = collections.defaultdict(list)
     by_signature = collections.defaultdict(list)
-    for sid, signature, r, p in conn.execute("SELECT source_id, signature, reactants, products FROM reactions"):
-        reaction = (signature, tuple(json.loads(r)), tuple(json.loads(p)))
+    for sid, signature, r, p, rate in conn.execute(
+            "SELECT source_id, signature, reactants, products, rate FROM reactions"):
+        reaction = (signature, tuple(json.loads(r)), tuple(json.loads(p)), json.loads(rate) if rate else None)
         by_source[sid].append(reaction)
-        by_signature[signature].append((sid, reaction[1], reaction[2]))
-    structural = {sid: {(tuple(sorted(r)), tuple(sorted(p))) for _, r, p in reactions}
+        by_signature[signature].append((sid,) + reaction[1:])
+    structural = {sid: {(tuple(sorted(r)), tuple(sorted(p))) for _, r, p, _ in reactions}
                   for sid, reactions in by_source.items()}
 
     def near_duplicates(sid):
@@ -580,22 +606,23 @@ def benchmark(index_path, exclude_near_duplicates=False):
                 reactions_with[k].append(reaction)
         for key, containing in reactions_with.items():
             support = collections.Counter()
-            for signature, r, p in containing:
+            for signature, r, p, own_rate in containing:
                 ck_r = [(None if k == key else k, formula_of.get(k)) for k in r]
                 ck_p = [(None if k == key else k, formula_of.get(k)) for k in p]
                 sig_b = formula_signature([f for _, f in ck_p], [f for _, f in ck_r])
-                candidates = set()
+                evidence = collections.defaultdict(list)  # candidate -> evidence, as in library_votes
                 for sig in {signature, sig_b}:
-                    for other, lib_r, lib_p in by_signature.get(sig, []):
+                    for other, lib_r, lib_p, lib_rate in by_signature.get(sig, []):
                         if other in skip:
                             continue
                         lr = [(k, formula_of.get(k)) for k in lib_r]
                         lp = [(k, formula_of.get(k)) for k in lib_p]
-                        for _, r_keys, p_keys in match_library_reaction(ck_r, ck_p, lr, lp):
+                        for forward, r_keys, p_keys in match_library_reaction(ck_r, ck_p, lr, lp):
                             for (known, _), k in zip(ck_r + ck_p, r_keys + p_keys):
                                 if known is None:
-                                    candidates.add(k)
-                support.update(candidates)
+                                    evidence[k].append({'sources': [other],
+                                                        'rate_match': forward and rates_match(lib_rate, own_rate)})
+                support.update(k for k, e in evidence.items() if corroborated(e, min_sources))
             hidden += 1
             if support:
                 covered += 1
@@ -613,6 +640,8 @@ def main():
     parser.add_argument('--index', required=True, help='the index file')
     parser.add_argument('--database', help='RMG-database input directory (contains thermo/ and kinetics/)')
     parser.add_argument('--models', help='the RMG-models directory with the imported models')
+    parser.add_argument('--min_sources', type=int, default=MIN_SOURCES,
+                        help='benchmark: sources needed when the rate constants differ (1 counts all evidence)')
     args = parser.parse_args()
     logging.basicConfig(level=logging.ERROR, format='%(message)s')  # RMG logs a lot at INFO
     logger.setLevel(logging.INFO)
@@ -628,9 +657,12 @@ def main():
         print('{0} structures, {1} thermo entries, {2} reactions, {3:.0f} MB'.format(
             structures, thermo, reactions, os.path.getsize(args.index) / 1e6))
     else:
+        print('Counting evidence with matching rate constants, or from at least {0} source(s)'.format(
+            args.min_sources))
         for exclude in (False, True):
             started = time.time()
-            hidden, covered, correct = benchmark(args.index, exclude_near_duplicates=exclude)
+            hidden, covered, correct = benchmark(args.index, exclude_near_duplicates=exclude,
+                                                 min_sources=args.min_sources)
             print('{0}: {1} hidden species, {2} ({3:.1%}) get a candidate, {4} ({5:.1%} of those) '
                   'have the right one on top ({6:.0f} s)'.format(
                       'without near-duplicate models' if exclude else 'all other sources',

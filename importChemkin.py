@@ -425,12 +425,13 @@ class ModelMatcher():
         self.thermo_matches = {}
         self.thermo_libraries_to_check = []
         self.blocked_matches = {}
+        """A dictionary of matches forbidden manually. blocked_matches[ck_label][rmg Species] = username (or None)"""
         self.evidence = None
         """The evidence index (evidence_index.EvidenceIndex), if one is used"""
         self.structure_keys = {}  # identified label -> evidence-index structure key
         self.library_candidates = {}  # structure key -> RMG species proposed by the evidence index
         self.chemkin_rate_fingerprints = {}  # CHEMKIN reaction index -> rate fingerprint
-        """A dictionary of matches forbidden manually. blocked_matches[ck_label][rmg Species] = username (or None)"""
+        self.library_votes_state = None  # what was identified and blocked when the library votes were made
         self.already_processed_labels = set()
         """A set of chemkin labels that have already been fully processed (limit_enlarge completed).
         On restart, these species are skipped to avoid expensive re-computation."""
@@ -3316,12 +3317,24 @@ class ModelMatcher():
         Recompute the votes that come from library reactions in the evidence index. A CHEMKIN
         reaction with an unidentified species votes for a structure when an earlier import or
         an RMG-database library has the same reaction, with the species identified here in the
-        other places. These are lookups, not RMG reaction generation, so this is fast; RMG's
-        reaction families still generate, and vote for, structures that no library has.
-        Returns True if the library votes changed.
+        other places, and with the same rate constants or in at least two sources (see
+        evidence_index.MIN_SOURCES). These are lookups, not RMG reaction generation, so this
+        is fast; RMG's reaction families still generate, and vote for, structures that no
+        library has. Returns True if the library votes changed.
+
+        The library votes depend only on which species are identified and which matches are
+        blocked, and everything else that removes votes (making or blocking a match) changes
+        one of those. So when neither has changed since the last refresh, nothing is redone:
+        the main loop calls this after every species it processes.
         """
         if not self.evidence:
             return False
+        state = (frozenset(self.identified_labels),
+                 frozenset((label, id(species)) for label, blocked in self.blocked_matches.items()
+                           for species in blocked))
+        if state == self.library_votes_state:
+            return False
+        self.library_votes_state = state
         started = time.time()
         before = self._library_vote_pairs()
         self._remove_library_votes()
