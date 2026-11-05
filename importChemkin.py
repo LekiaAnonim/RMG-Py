@@ -764,14 +764,23 @@ class ModelMatcher():
                             if was_new:
                                 rmg_species.generate_resonance_structures()
                                 rmg_species.thermo = generate_thermo_data(rmg_species)
-                            if self.offer_vote_database_identification(chemkin_label, rmg_species,
-                                                                       species_data.get('identified_by')):
-                                restored_count += 1
+                            # Ensure label aligns with chemkin label for downstream lookups
+                            rmg_species.label = chemkin_label
+                            self.species_dict_rmg[chemkin_label] = rmg_species
+                            self.identified_labels.append(chemkin_label)
+                            restored_count += 1
+
+                            # Restore identified_by info
+                            identified_by = species_data.get('identified_by', 'Auto')
+                            if identified_by:
+                                self.identified_by[chemkin_label] = identified_by
+                            # SMILES.txt lost this line (the vote database is not in git); write it back
+                            self.restore_to_known_species_file(chemkin_label, rmg_species, identified_by)
                         except Exception as e:
                             logging.warning(f"Could not reconstruct species {chemkin_label} from SMILES: {e}")
 
-                logging.info(f"✓ Offered {restored_count} identifications from the vote database that "
-                             f"SMILES.txt does not have, as tentative matches to confirm")
+                logging.info(f"✓ Restored {restored_count} identified species from the vote database that "
+                             f"SMILES.txt did not have, and wrote them back to {self.known_species_file}")
             
             # 2. Load blocked matches - prevents re-suggesting bad matches
             blocked_from_db = self.vote_db.load_blocked_matches(self.job_id)
@@ -2123,23 +2132,31 @@ class ModelMatcher():
             if match['label'] == chemkin_label or match['species'] == rmg_species:
                 self.tentative_matches.remove(match)
 
-    def offer_vote_database_identification(self, chemkin_label, rmg_species, identified_by=None):
+    def restore_to_known_species_file(self, chemkin_label, rmg_species, identified_by=None):
         """
-        Offer an identification that the vote database has but SMILES.txt does not, as a
-        tentative match. SMILES.txt is the record of the model's identifications (it is the file
-        that goes into RMG-models), so an identification is not applied from the vote database
-        alone: a line someone removed from SMILES.txt must not come back without a sign, and an
-        identification that never reached SMILES.txt must get there. Confirming the match on the
-        tentative page writes it to SMILES.txt. Returns True if the match was offered.
+        Write an identification that the vote database has but SMILES.txt does not back to
+        SMILES.txt. Every confirmation is written to SMILES.txt when it is made, so such an
+        identification is a line SMILES.txt lost outside the importer (for example a working
+        copy that was checked out again). The comment says where the line came from, so it can
+        be seen in the model's draft and pull request, and removed there if it was deleted on
+        purpose. Returns True if the line was written.
         """
-        source = "{0}, from the vote database (not in SMILES.txt)".format(identified_by or 'Auto')
-        if self.set_tentative_match(chemkin_label, rmg_species, username=source):
-            logging.info("{0} = {1!s} is in the vote database but not in SMILES.txt: offered as a "
-                         "tentative match to confirm".format(chemkin_label, rmg_species))
-            return True
-        logging.info("Not offering {0} = {1!s} from the vote database: it conflicts with another "
-                     "match".format(chemkin_label, rmg_species))
-        return False
+        if identified_by and identified_by != 'Auto':
+            comment = "Confirmed by {0} (restored from the vote database)".format(identified_by)
+        else:
+            comment = "Restored from the vote database"
+        if not os.path.exists(self.known_species_file):
+            open(self.known_species_file, 'a').close()
+        try:
+            written = self.save_match_to_file(chemkin_label, rmg_species, comment=comment)
+        except Exception:
+            logging.exception("Could not write {0} = {1!s}, restored from the vote database, to {2}".format(
+                chemkin_label, rmg_species, self.known_species_file))
+            return False
+        if written:
+            logging.info("Restored {0} = {1!s} from the vote database and wrote it to {2}".format(
+                chemkin_label, rmg_species, self.known_species_file))
+        return written
 
     def set_tentative_match(self, chemkin_label, rmg_species, username=None):
         """
@@ -2255,9 +2272,10 @@ class ModelMatcher():
                 user=user_text))
         return True
 
-    def save_match_to_file(self, ck_label, rmg_species, username=None):
+    def save_match_to_file(self, ck_label, rmg_species, username=None, comment=None):
         """
-        Save the match to the known_species_file
+        Save the match to the known_species_file, with "! Confirmed by <username>", or with
+        "! <comment>" when a comment is given instead.
         """
         with open(self.known_species_file) as f:
             for line in f.readlines():
@@ -2268,7 +2286,9 @@ class ModelMatcher():
                 if label == ck_label:
                     logging.info("Trying to confirm match {0!s} but already matched to {1!s}".format(label, smiles))
                     return False
-        if username:
+        if comment:
+            user_text = "\t! {0}".format(comment)
+        elif username:
             user_text = "\t! Confirmed by {0}".format(username)
             self.identified_by[ck_label] = username
         else:
