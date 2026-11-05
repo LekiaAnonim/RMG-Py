@@ -603,6 +603,14 @@ def get_relative_referer(default="votes2.html"):
         return f"{filename}?{parsed.query}"
     return filename
 
+
+class CollidersWithoutStructure(Exception):
+    """
+    Species in third-body efficiency lists have no structure yet, so the reactions can't be read:
+    RMG-Py keeps collision efficiencies by molecule. The message lists them.
+    """
+
+
 class ModelMatcher():
     """
     For identifying species in an imported model
@@ -1516,7 +1524,7 @@ class ModelMatcher():
                 except Exception as e:
                     logging.warning("Error reading line '{0}'".format(line))
                     raise e
-        if not line.endswith('\n'):
+        if line is not None and not line.endswith('\n'):  # None: the file is empty
             logging.info("Ensuring known species file ends with a line break")
             with open(known_species_file, 'a') as f:
                 f.write('\n')
@@ -1919,8 +1927,14 @@ class ModelMatcher():
                         return True
         return False
 
-    def identify_small_molecules(self):
-        """Identify anything little that is uniquely determined by its chemical formula"""
+    def identify_small_molecules(self, save=True):
+        """
+        Identify anything little that is uniquely determined by its chemical formula.
+
+        With save=False (the --minimal check) the matches are made in memory only: nothing is
+        written to SMILES.txt or to the vote database, so a check leaves the model's files as
+        they are.
+        """
 
         known_formulas = {
              'CH4': 'C',
@@ -1970,8 +1984,10 @@ class ModelMatcher():
                 species.molecule = [Molecule(smiles=smiles)]
             species.generate_resonance_structures()
             identified_labels.append(species_label)
+            if not save:
+                continue
             self.save_match_to_file(species_label, species)
-            
+
             # Save each identified species to the database
             if self.vote_db_enabled:
                 self.vote_db.save_identified_species(
@@ -1987,6 +2003,77 @@ class ModelMatcher():
             logging.info("   {0}".format(species_label))
 
         self.identified_labels.extend(identified_labels)
+
+    def colliders_without_structure(self, reactions_file):
+        """
+        The species named in the third-body efficiency lists of the REACTIONS blocks
+        (HE/0.83/ CO/1.9/ ...) that have no structure yet, as {label: [equation, ...]} in the
+        order they first appear.
+
+        read_reactions_block stops at the first such collider, because RMG-Py keeps efficiencies
+        by molecule; this finds them all before the reactions are read. Names that are not
+        species are left to read_reactions_block, which reports them.
+        """
+        missing = collections.OrderedDict()
+        in_reactions = False
+        equation = None
+        with open(reactions_file, encoding='utf-8', errors='ignore') as f:
+            for line in f:
+                line = remove_comment_from_line(line)[0].strip()
+                tokens = line.split()
+                if not tokens:
+                    continue
+                keyword = tokens[0].upper()
+                if keyword.startswith('REAC'):
+                    in_reactions = True
+                    continue
+                if not in_reactions:
+                    continue
+                if keyword == 'END':
+                    in_reactions = False
+                    continue
+                if '=' in line:  # a reaction line: the equation, then A, n and Ea
+                    equation = ''.join(tokens[:-3]) if len(tokens) > 3 else tokens[0]
+                    continue
+                parts = line.split('/')
+                for name, value in zip(parts[0::2], parts[1::2]):
+                    try:
+                        float(value)
+                    except ValueError:
+                        continue  # LOW/.../, TROE/.../, REV/.../ and the other keywords
+                    name = name.strip()
+                    species = self.species_dict.get(name)
+                    if species is None:  # as read_reactions_block, which also tries capitals
+                        species = self.species_dict.get(name.upper())
+                    if species is None or species.molecule:
+                        continue
+                    equations = missing.setdefault(species.label, [])
+                    if equation not in equations:
+                        equations.append(equation)
+        return missing
+
+    def check_collider_structures(self, reactions_file):
+        """
+        Before the reactions are read: if some colliders still have no structure, log them all,
+        with their formula and a reaction they are in, and raise CollidersWithoutStructure.
+        """
+        missing = self.colliders_without_structure(reactions_file)
+        if not missing:
+            return
+        smiles_txt = os.path.basename(self.known_species_file or 'SMILES.txt')
+        lines = [
+            "{0} species are third-body colliders but have no structure, and their formulas don't give "
+            "one, so the reactions can't be read (RMG-Py keeps collision efficiencies by molecule). "
+            "Add a line to {1} for each (the name, a tab, then its SMILES):".format(len(missing), smiles_txt)
+        ]
+        width = max(len(label) for label in missing)
+        for label, equations in missing.items():
+            more = " and {0} more".format(len(equations) - 1) if len(equations) > 1 else ""
+            lines.append("   {0:<{width}}  {1:<10}  collider in {2}{3}".format(
+                label, self.formula_dict.get(label, '?'), equations[0], more, width=width))
+        message = "\n".join(lines)
+        logging.error(message)
+        raise CollidersWithoutStructure(message)
 
     def ask_for_match_smiles(self, chemkin_species):
             species_label = chemkin_species.label
@@ -3017,6 +3104,11 @@ class ModelMatcher():
                 logging.error(message)
                 raise Exception(message)
 
+        # As main() does before it reads the reactions: name the species whose formula gives
+        # their structure (HE, AR, H2O, ...), in memory only, then list the colliders that
+        # still need a line in SMILES.txt.
+        self.identify_small_molecules(save=False)
+        self.check_collider_structures(reactions_file)
         self.load_reactions(reactions_file)
 
 
@@ -3152,6 +3244,7 @@ class ModelMatcher():
 
         chemkin_formulas = set(self.formula_dict.values())
 
+        self.check_collider_structures(reactions_file)
         self.load_reactions(reactions_file)
         if self.vote_db_enabled:
             self.vote_db.update_job_statistics(
@@ -5487,7 +5580,10 @@ if __name__ == '__main__':
 #     t.start()
 
     if args.minimal:
-        mm.minimal()
+        try:
+            mm.minimal()
+        except CollidersWithoutStructure:
+            sys.exit(1)  # the log ends with the list; a traceback would push it out of view
         print("Done")
         exit()
 
