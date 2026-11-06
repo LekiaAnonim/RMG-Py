@@ -342,6 +342,15 @@ def known_smiles_for(molecule):
     return smiles
 
 
+def one_line(text):
+    """
+    `text` on one line: line breaks and runs of spaces become one space, and the ends are
+    trimmed. A name or comment written after "!" in SMILES.txt must not hold a line break, or the
+    rest of it becomes a line of its own that is not NAME SMILES.
+    """
+    return ' '.join(str(text).split())
+
+
 def append_line(path, line):
     """
     Add `line` (with its line break) at the end of the file at `path`. If the file does not end
@@ -820,6 +829,8 @@ class ModelMatcher():
 
                             # Restore identified_by info
                             identified_by = species_data.get('identified_by', 'Auto')
+                            # One line: older databases have "Prosper\n", read from a SMILES.txt comment
+                            identified_by = one_line(identified_by) if identified_by else identified_by
                             if identified_by:
                                 self.identified_by[chemkin_label] = identified_by
                             # SMILES.txt lost this line (the vote database is not in git); write it back
@@ -1484,9 +1495,9 @@ class ModelMatcher():
                     if '!' in line:
                         line, comments = line.split("!", 1)
                         if comments:
-                            usermatch = re.match("\s+Blocked by (.*)", comments)
+                            usermatch = re.match(r"\s+Blocked by (.*)", comments)
                             if usermatch:
-                                user = usermatch.group(1)
+                                user = one_line(usermatch.group(1)) or None
                     tokens = line.split()
                     assert len(tokens) == 2, "Not two tokens on line (was expecting NAME    SMILES)"
                     name, smiles = tokens
@@ -1545,9 +1556,12 @@ class ModelMatcher():
                     if '!' in line:
                         line, comments = line.split("!",1)
                         if comments:
-                            usermatch = re.match("\s+Confirmed by ([^.]*)",comments)
+                            # [^.\r\n]: the name ends at a full stop or at the end of the line, and
+                            # does not keep the line break ("Prosper\n" went into the vote database,
+                            # and was written back to SMILES.txt on two lines)
+                            usermatch = re.match(r"\s+Confirmed by ([^.\r\n]*)", comments)
                             if usermatch:
-                                user = usermatch.group(1)
+                                user = one_line(usermatch.group(1)) or None
                     tokens = line.split()
                     if len(tokens) == 0:
                         # blank line (after comments removed)
@@ -2386,6 +2400,7 @@ class ModelMatcher():
         """
         Save the blocked match to the blocked_matches_file
         """
+        username = one_line(username) if username else username
         if username:
             user_text = "\t! Blocked by {0}".format(username)
             self.identified_by[ck_label] = username
@@ -2409,6 +2424,8 @@ class ModelMatcher():
                     logging.info("Trying to confirm match {0!s} but already matched to {1!s}".format(
                         label, smiles or line.split('!')[0].strip()))
                     return False
+        comment = one_line(comment) if comment else comment
+        username = one_line(username) if username else username
         if comment:
             user_text = "\t! {0}".format(comment)
         elif username:

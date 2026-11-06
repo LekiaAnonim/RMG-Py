@@ -91,3 +91,16 @@ def test_a_missing_smiles_txt_is_made(tmp_path):
         {'chemkin_label': 'CH4', 'smiles': 'C', 'identified_by': 'lekia'}]
     mm.load_votes_from_storage()
     assert 'CH4\tC' in open(mm.known_species_file).read()
+
+
+def test_a_name_with_a_line_break_in_the_vote_database_is_restored_on_one_line(tmp_path):
+    # ANL-Brown, Nov 2026: "Prosper\n" was read from "! Confirmed by Prosper" in SMILES.txt and
+    # kept in the vote database; the restored comment took two lines, and the second,
+    # " (restored from the vote database)", stopped the import at the next confirmation.
+    mm = matcher(tmp_path, '')
+    mm.vote_db.load_identified_species_full.return_value = [
+        {'chemkin_label': 'CH4', 'smiles': 'C', 'identified_by': 'Prosper\n'}]
+    mm.load_votes_from_storage()
+    assert open(mm.known_species_file).read() == (
+        'CH4\tC\t! Confirmed by Prosper (restored from the vote database)\n')
+    assert mm.identified_by['CH4'] == 'Prosper'
