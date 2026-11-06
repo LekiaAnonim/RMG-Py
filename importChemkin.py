@@ -342,6 +342,46 @@ def known_smiles_for(molecule):
     return smiles
 
 
+def append_line(path, line):
+    """
+    Add `line` (with its line break) at the end of the file at `path`. If the file does not end
+    with a line break (it was saved without one after the importer read it), one is added
+    first, so the new line is not joined to the last line of the file: "C6H6 c1ccccc1" and
+    "AR [Ar]" would become "C6H6 c1ccccc1AR [Ar]", three words, which stops the import.
+    """
+    try:
+        with open(path, 'rb') as f:
+            f.seek(0, os.SEEK_END)
+            if f.tell():
+                f.seek(-1, os.SEEK_END)
+                if f.read(1) not in (b'\n', b'\r'):
+                    line = '\n' + line
+    except FileNotFoundError:
+        pass
+    with open(path, 'a') as f:
+        f.write(line)
+
+
+def known_species_lines(path):
+    """
+    (line number, name, SMILES, line) for each "NAME SMILES" line of a SMILES.txt, without the
+    comments and blank lines. A line that is not two words is logged and given with a SMILES of
+    None: load_known_species stops at such a line, but a line written while the import runs
+    must not stop it at the next confirmation.
+    """
+    with open(path) as f:
+        for number, line in enumerate(f, 1):
+            tokens = line.split('!')[0].split()
+            if not tokens:
+                continue
+            if len(tokens) != 2:
+                logging.warning("Line {0} of {1} is not NAME SMILES ({2} words): {3}".format(
+                    number, path, len(tokens), line.rstrip('\r\n')))
+                yield number, tokens[0], None, line
+                continue
+            yield number, tokens[0], tokens[1], line
+
+
 def states_spin(smiles):
     """True if a SMILES.txt entry states the spin: a special name, or a spin in front of a SMILES."""
     return smiles in SPECIAL_SMILES or any(smiles.startswith(spin) for spin in SPINS)
@@ -2352,11 +2392,10 @@ class ModelMatcher():
         else:
             user_text = ""
 
-        with open(self.blocked_matches_file, 'a') as f:
-            f.write("{name}\t{smi}{user}\n".format(
-                name=ck_label,
-                smi=known_smiles_for(rmg_species.molecule[0]),
-                user=user_text))
+        append_line(self.blocked_matches_file, "{name}\t{smi}{user}\n".format(
+            name=ck_label,
+            smi=known_smiles_for(rmg_species.molecule[0]),
+            user=user_text))
         return True
 
     def save_match_to_file(self, ck_label, rmg_species, username=None, comment=None):
@@ -2364,14 +2403,11 @@ class ModelMatcher():
         Save the match to the known_species_file, with "! Confirmed by <username>", or with
         "! <comment>" when a comment is given instead.
         """
-        with open(self.known_species_file) as f:
-            for line in f.readlines():
-                line = line.split('!')[0]
-                if not line.strip():
-                    continue
-                label, smiles = line.split()
+        if os.path.exists(self.known_species_file):
+            for number, label, smiles, line in known_species_lines(self.known_species_file):
                 if label == ck_label:
-                    logging.info("Trying to confirm match {0!s} but already matched to {1!s}".format(label, smiles))
+                    logging.info("Trying to confirm match {0!s} but already matched to {1!s}".format(
+                        label, smiles or line.split('!')[0].strip()))
                     return False
         if comment:
             user_text = "\t! {0}".format(comment)
@@ -2381,11 +2417,10 @@ class ModelMatcher():
         else:
             user_text = ""
 
-        with open(self.known_species_file, 'a') as f:
-            f.write("{name}\t{smi}{user}\n".format(
-                name=ck_label,
-                smi=known_smiles_for(rmg_species.molecule[0]),
-                user=user_text))
+        append_line(self.known_species_file, "{name}\t{smi}{user}\n".format(
+            name=ck_label,
+            smi=known_smiles_for(rmg_species.molecule[0]),
+            user=user_text))
         return True
 
     def set_thermo_match(self, chemkin_label, rmg_species, library_name,
